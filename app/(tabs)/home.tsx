@@ -5,6 +5,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { Ionicons } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
 
@@ -24,7 +25,7 @@ export default function HomeScreen() {
   return (
     <ThemedView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        
+
         {/* Header Section */}
         <View style={styles.header}>
           <ThemedText type="title">Dashboard</ThemedText>
@@ -37,7 +38,7 @@ export default function HomeScreen() {
             <ThemedText type="defaultSemiBold">Weekly Volume</ThemedText>
             <ThemedText style={{ color: accentColor, fontSize: 12 }}>+12% from last week</ThemedText>
           </View>
-          
+
           {/* Visual representation of a graph */}
           <View style={styles.graphContainer}>
             {[40, 70, 45, 90, 65, 80, 100].map((height, index) => (
@@ -51,7 +52,17 @@ export default function HomeScreen() {
 
         {/* Section 2: Exercise Redirection Cards */}
         <View style={styles.sectionHeader}>
-          <ThemedText type="subtitle">My Exercises</ThemedText>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <ThemedText type="subtitle">My Workouts</ThemedText>
+            
+            <TouchableOpacity 
+              onPress={() => router.push('/workout/new-template')}
+              style={styles.addButtonSmall}
+            >
+              <Ionicons name="add-circle" size={24} color={accentColor} />
+            </TouchableOpacity>
+          </View>
+
           <TouchableOpacity onPress={() => router.push('/workout/create')}>
             <ThemedText type="link">View All</ThemedText>
           </TouchableOpacity>
@@ -59,8 +70,8 @@ export default function HomeScreen() {
 
         <View style={styles.cardGrid}>
           {userExercises.map((item) => (
-            <TouchableOpacity 
-              key={item.id} 
+            <TouchableOpacity
+              key={item.id}
               style={[styles.exerciseCard, { backgroundColor: cardBackground }]}
               onPress={() => router.push(`/workout/${item.id}`)}
             >
@@ -145,6 +156,11 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 16,
     alignItems: 'flex-start',
+  },
+  addButtonSmall: {
+    paddingHorizontal: 8, // Spacing between text and icon
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   iconCircle: {
     width: 40,

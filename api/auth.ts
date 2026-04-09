@@ -1,9 +1,20 @@
 import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 
-const BASE_URL = "http://192.168.100.156:5197/api/auth";
+import { BASE_URL } from './config';
+
+const AUTH_URL = `${BASE_URL}/auth`;
+
+async function saveToken(token: string) {
+  if (Platform.OS === 'web') {
+    if (typeof window !== 'undefined') localStorage.setItem('userToken', token);
+  } else {
+    await SecureStore.setItemAsync('userToken', token);
+  }
+}
 
 export async function register(email: string, password: string, username: string) {
-  const res = await fetch(`${BASE_URL}/register`, {
+  const res = await fetch(`${AUTH_URL}/register`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -15,19 +26,17 @@ export async function register(email: string, password: string, username: string
     }),
   });
 
-// 1. You must await the json parsing to get the data object
   const data = await res.json(); 
 
-  // 2. Based on your .NET AuthResponseDto, the token is in data.token
   if (data && data.token) {
-    await SecureStore.setItemAsync('userToken', data.token);
+    await saveToken(data.token);
   }
 
   return data;
 }
 
 export async function login(email: string, password: string) {
-  const res = await fetch(`${BASE_URL}/login`, {
+  const res = await fetch(`${AUTH_URL}/login`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -42,5 +51,11 @@ export async function login(email: string, password: string) {
     throw new Error("Invalid credentials");
   }
 
-  return res.json(); // { token }
+  const data = await res.json(); 
+
+  if (data && data.token) {
+    await saveToken(data.token);
+  }
+
+  return data;
 }
