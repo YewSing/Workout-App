@@ -59,3 +59,17 @@ export async function login(email: string, password: string) {
 
   return data;
 }
+
+export async function logout() {
+  const res = await fetch(`${AUTH_URL}/logout`, {
+    method: "POST",
+  });
+
+  if (Platform.OS === 'web') {
+    if (typeof window !== 'undefined') localStorage.removeItem('userToken');
+  } else {
+    await SecureStore.deleteItemAsync('userToken');
+  }
+
+  return res;
+}

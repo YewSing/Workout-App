@@ -1,11 +1,12 @@
-import React from 'react';
-import { StyleSheet, View, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, View, ScrollView, TouchableOpacity, Dimensions, Modal, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Ionicons } from '@expo/vector-icons';
+import { fetchWorkouts, deleteWorkoutTemplate } from '@/api/workout';
 
 const { width } = Dimensions.get('window');
 
@@ -14,13 +15,56 @@ export default function HomeScreen() {
   const cardBackground = useThemeColor({ light: '#F5F5F7', dark: '#F5F5F7' }, 'background');
   const accentColor = '#007AFF';
 
-  // Hardcoded exercises for the redirection cards
-  const userExercises = [
-    { id: '1', name: 'Lat Pulldowns', target: 'Back Width', icon: 'figure.back.strength' },
-    { id: '2', name: 'Lateral Raises', target: 'Shoulder Fullness', icon: 'figure.arms.open' },
-    { id: '3', name: 'Incline Bench', target: 'Upper Chest', icon: 'figure.strengthtraining' },
-    { id: '4', name: 'Face Pulls', target: 'Rear Delts', icon: 'figure.mixed.cardio' },
-  ];
+  const [workouts, setWorkouts] = useState<any[]>([]);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [selectedWorkoutId, setSelectedWorkoutId] = useState<string | null>(null);
+
+  const loadWorkouts = async () => {
+    try {
+      const data = await fetchWorkouts();
+      if (data && data.$values) {
+        setWorkouts(data.$values);
+      } else if (Array.isArray(data)) {
+        setWorkouts(data);
+      }
+    } catch (err) {
+      console.log("Error loading workouts", err);
+    }
+  };
+
+  useEffect(() => {
+    loadWorkouts();
+  }, []);
+
+  const handleMoreActions = (id: string) => {
+    setSelectedWorkoutId(id);
+    setModalVisible(true);
+  };
+
+  const handleDelete = async () => {
+    if (!selectedWorkoutId) return;
+
+    Alert.alert(
+      "Delete Template",
+      "Are you sure you want to delete this template?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Delete", 
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteWorkoutTemplate(selectedWorkoutId);
+              setModalVisible(false);
+              loadWorkouts();
+            } catch (err) {
+              Alert.alert("Error", "Could not delete template");
+            }
+          }
+        }
+      ]
+    );
+  };
 
   return (
     <ThemedView style={styles.container}>
@@ -29,7 +73,7 @@ export default function HomeScreen() {
         {/* Header Section */}
         <View style={styles.header}>
           <ThemedText type="title">Dashboard</ThemedText>
-          <ThemedText style={styles.subtitle}>Tracking your V-Shape progress</ThemedText>
+          <ThemedText style={styles.subtitle}>Tracking your progress</ThemedText>
         </View>
 
         {/* Section 1: Analytics Graph Card */}
@@ -50,10 +94,10 @@ export default function HomeScreen() {
           </View>
         </ThemedView>
 
-        {/* Section 2: Exercise Redirection Cards */}
+        {/* Section 2: Workout Redirection Cards */}
         <View style={styles.sectionHeader}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <ThemedText type="subtitle">My Workouts</ThemedText>
+            <ThemedText type="subtitle">My Templates</ThemedText>
             
             <TouchableOpacity 
               onPress={() => router.push('/workout/new-template')}
@@ -63,28 +107,76 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity onPress={() => router.push('/workout/create')}>
+          <TouchableOpacity onPress={() => router.push('/(tabs)/workout')}>
             <ThemedText type="link">View All</ThemedText>
           </TouchableOpacity>
         </View>
 
         <View style={styles.cardGrid}>
-          {userExercises.map((item) => (
+          {workouts.map((item) => (
             <TouchableOpacity
               key={item.id}
               style={[styles.exerciseCard, { backgroundColor: cardBackground }]}
               onPress={() => router.push(`/workout/${item.id}`)}
+              activeOpacity={0.8}
             >
-              <View style={styles.iconCircle}>
-                <IconSymbol name={item.icon as any} size={24} color={accentColor} />
+              <View style={styles.cardTopRow}>
+                <View style={styles.iconCircle}>
+                  <IconSymbol name="fitness.center" size={24} color={accentColor} />
+                </View>
+                <TouchableOpacity 
+                  style={styles.moreActionButton}
+                  onPress={() => handleMoreActions(item.id)}
+                  hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
+                >
+                  <Ionicons name="ellipsis-horizontal" size={20} color="#888" />
+                </TouchableOpacity>
               </View>
               <ThemedText type="defaultSemiBold" numberOfLines={1}>{item.name}</ThemedText>
-              <ThemedText style={styles.targetText}>{item.target}</ThemedText>
+              <ThemedText style={styles.targetText}>{item.description || 'No description'}</ThemedText>
             </TouchableOpacity>
           ))}
         </View>
 
       </ScrollView>
+
+      {/* Action Bottom Sheet Modal */}
+      <Modal
+        visible={modalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setModalVisible(false)}>
+          <View style={styles.actionSheetContainer}>
+            <View style={styles.dragIndicator} />
+            <ThemedText style={styles.sheetTitle}>Template Actions</ThemedText>
+
+            <TouchableOpacity style={styles.actionItem} onPress={() => Alert.alert("Coming Soon", "Duplicate template feature")}>
+              <Ionicons name="copy-outline" size={22} color="#000" />
+              <ThemedText style={styles.actionText}>Duplicate Template</ThemedText>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionItem} onPress={() => Alert.alert("Coming Soon", "Pin to Top feature")}>
+              <Ionicons name="star-outline" size={22} color="#000" />
+              <ThemedText style={styles.actionText}>Pin to Top</ThemedText>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionItem} onPress={() => Alert.alert("Coming Soon", "Share feature")}>
+              <Ionicons name="share-outline" size={22} color="#000" />
+              <ThemedText style={styles.actionText}>Share Template</ThemedText>
+            </TouchableOpacity>
+
+            <View style={styles.divider} />
+
+            <TouchableOpacity style={[styles.actionItem, styles.destructiveAction]} onPress={handleDelete}>
+              <Ionicons name="trash-outline" size={22} color="#FF3B30" />
+              <ThemedText style={[styles.actionText, { color: '#FF3B30' }]}>Delete Template</ThemedText>
+            </TouchableOpacity>
+            
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </ThemedView>
   );
 }
@@ -152,13 +244,23 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   exerciseCard: {
-    width: (width - 64) / 2, // 2-column grid calculation
+    width: (width - 64) / 2,
     padding: 16,
     borderRadius: 16,
     alignItems: 'flex-start',
   },
+  cardTopRow: {
+    flexDirection: 'row', 
+    width: '100%', 
+    justifyContent: 'space-between', 
+    alignItems: 'flex-start', 
+    marginBottom: 12
+  },
+  moreActionButton: {
+    padding: 4,
+  },
   addButtonSmall: {
-    paddingHorizontal: 8, // Spacing between text and icon
+    paddingHorizontal: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -176,4 +278,48 @@ const styles = StyleSheet.create({
     opacity: 0.5,
     marginTop: 4,
   },
+  modalOverlay: {
+    flex: 1, 
+    backgroundColor: 'rgba(0,0,0,0.4)', 
+    justifyContent: 'flex-end',
+  },
+  actionSheetContainer: {
+    backgroundColor: '#fff', 
+    borderTopLeftRadius: 20, 
+    borderTopRightRadius: 20, 
+    padding: 24, 
+    paddingBottom: 40,
+  },
+  dragIndicator: {
+    width: 40, 
+    height: 5, 
+    backgroundColor: '#DDDDDD', 
+    borderRadius: 3, 
+    alignSelf: 'center', 
+    marginBottom: 20,
+  },
+  sheetTitle: {
+    fontSize: 18, 
+    fontWeight: '700', 
+    marginBottom: 16, 
+    opacity: 0.5
+  },
+  actionItem: {
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingVertical: 16, 
+    gap: 12
+  },
+  actionText: {
+    fontSize: 16, 
+    color: '#000'
+  },
+  divider: {
+    height: 1, 
+    backgroundColor: '#EEE', 
+    marginVertical: 8
+  },
+  destructiveAction: {
+    marginTop: 8
+  }
 });

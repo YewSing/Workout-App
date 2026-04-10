@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, TextInput, FlatList, TouchableOpacity, Alert, View, ActivityIndicator } from 'react-native';
+import { StyleSheet, TextInput, FlatList, TouchableOpacity, Alert, View, ActivityIndicator, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -17,7 +17,29 @@ export default function CreateWorkoutScreen() {
   const [availableExercises, setAvailableExercises] = useState<Exercise[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedMuscle, setSelectedMuscle] = useState<string | null>(null);
   const router = useRouter();
+
+  const muscleGroupsMapping: Record<string, string[]> = {
+    'Chest': ['chest', 'upper chest', 'lower chest', 'mid chest', 'pectorals', 'pecs'],
+    'Back': ['back', 'lats', 'upper back', 'lower back', 'rhomboids', 'traps'],
+    'Shoulder': ['shoulder', 'front delt', 'side delt', 'rear delt', 'delts', 'deltoids'],
+    'Legs': ['legs', 'quads', 'hamstrings', 'hamstring', 'calf', 'calves', 'glutes']
+  };
+
+  const filteredExercises = availableExercises.filter(exercise => {
+    const matchesSearch = (exercise.name || "").toLowerCase().includes(searchQuery.toLowerCase());
+    
+    let matchesMuscle = true;
+    if (selectedMuscle) {
+      const exerciseMuscle = (exercise.muscleGroup || "").toLowerCase();
+      const targetMuscles = muscleGroupsMapping[selectedMuscle] || [selectedMuscle.toLowerCase()];
+      matchesMuscle = targetMuscles.some(m => exerciseMuscle.includes(m)) || exerciseMuscle === selectedMuscle.toLowerCase();
+    }
+    
+    return matchesSearch && matchesMuscle;
+  });
 
   useEffect(() => {
     const loadExercises = async () => {
@@ -77,11 +99,46 @@ export default function CreateWorkoutScreen() {
         Select Exercises ({selectedIds.length})
       </ThemedText>
 
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInputFlex}
+          placeholder="Search exercises..."
+          placeholderTextColor="#888"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchQuery("")} style={styles.clearButton}>
+            <ThemedText style={styles.clearButtonText}>✕</ThemedText>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <View style={styles.filterContainer}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <TouchableOpacity 
+            style={[styles.filterButton, selectedMuscle === null && styles.filterButtonSelected]} 
+            onPress={() => setSelectedMuscle(null)}
+          >
+            <ThemedText style={[styles.filterText, selectedMuscle === null && styles.filterTextSelected]}>All</ThemedText>
+          </TouchableOpacity>
+          {['Chest', 'Back', 'Shoulder', 'Legs'].map(muscle => (
+            <TouchableOpacity 
+              key={muscle}
+              style={[styles.filterButton, selectedMuscle === muscle && styles.filterButtonSelected]} 
+              onPress={() => setSelectedMuscle(muscle === selectedMuscle ? null : muscle)}
+            >
+              <ThemedText style={[styles.filterText, selectedMuscle === muscle && styles.filterTextSelected]}>{muscle}</ThemedText>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
       {loading ? (
         <ActivityIndicator size="large" color="#007AFF" style={{ marginTop: 20 }} />
       ) : (
         <FlatList
-          data={availableExercises}
+          data={filteredExercises}
           keyExtractor={(item, index) => item.id?.toString() || index.toString()}
           contentContainerStyle={{ paddingBottom: 100 }} // Space for the save button
           renderItem={({ item }) => {
@@ -124,12 +181,14 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 24,
     paddingTop: 60,
-  },
+    marginBottom: 12,
+},
   title: {
     marginBottom: 20,
   },
   input: {
-    height: 50,
+    minHeight: 54,
+    paddingVertical: 14,
     borderWidth: 1,
     borderColor: '#ccc',
     borderRadius: 12,
@@ -137,6 +196,53 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#000', // Ensure text is visible; adapt for dark mode if needed
     backgroundColor: '#fff',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    paddingRight: 8,
+  },
+  searchInputFlex: {
+    flex: 1,
+    minHeight: 54,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    color: '#000',
+  },
+  clearButton: {
+    padding: 8,
+  },
+  clearButtonText: {
+    color: '#999',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  filterContainer: {
+    marginBottom: 16,
+  },
+  filterButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#e0e0e0',
+    marginRight: 8,
+  },
+  filterButtonSelected: {
+    backgroundColor: '#007AFF',
+  },
+  filterText: {
+    fontSize: 14,
+    color: '#333',
+  },
+  filterTextSelected: {
+    color: '#fff',
+    fontWeight: 'bold',
   },
   item: {
     flexDirection: 'row',
