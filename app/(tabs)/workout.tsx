@@ -3,50 +3,50 @@ import { StyleSheet, View, ScrollView, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { useThemeColor } from '@/hooks/use-theme-color';
 import { Ionicons } from '@expo/vector-icons';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { Palette, Spacing, Radius, Shadows } from '@/constants/theme';
 
 export default function WorkoutScreen() {
   const router = useRouter();
-  const cardBackground = useThemeColor({ light: '#F5F5F7', dark: '#1C1C1E' }, 'background');
-  const accentColor = '#007AFF';
 
   return (
     <ThemedView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         
         <View style={styles.header}>
-          <ThemedText type="title">Workouts</ThemedText>
-          <ThemedText style={styles.subtitle}>Programs & Templates</ThemedText>
+          <ThemedText type="displayLarge">Workouts</ThemedText>
+          <ThemedText type="bodySmall" style={styles.subtitle}>Programs & Templates</ThemedText>
         </View>
 
         <TouchableOpacity 
-          style={[styles.actionCard, { backgroundColor: cardBackground }]} 
+          style={styles.actionCard}
           onPress={() => router.push('/workout/create')}
+          activeOpacity={0.8}
         >
           <View style={styles.iconCircle}>
-            <Ionicons name="barbell-outline" size={24} color={accentColor} />
+            <Ionicons name="barbell-outline" size={24} color={Palette.accent} />
           </View>
           <View style={styles.cardInfo}>
-            <ThemedText type="defaultSemiBold">Start Empty Workout</ThemedText>
-            <ThemedText style={styles.cardSubtext}>Log an impromptu session</ThemedText>
+            <ThemedText type="bodyLarge">Start Empty Workout</ThemedText>
+            <ThemedText type="caption" style={styles.cardSubtext}>Log an impromptu session</ThemedText>
           </View>
-          <Ionicons name="chevron-forward" size={24} color="#C7C7CC" />
+          <Ionicons name="chevron-forward" size={24} color={Palette.textSecondary} />
         </TouchableOpacity>
 
         <TouchableOpacity 
-          style={[styles.actionCard, { backgroundColor: cardBackground }]} 
+          style={styles.actionCard}
           onPress={() => router.push('/workout/new-template')}
+          activeOpacity={0.8}
         >
           <View style={styles.iconCircle}>
-            <Ionicons name="document-text-outline" size={24} color={accentColor} />
+            <Ionicons name="document-text-outline" size={24} color={Palette.accent} />
           </View>
           <View style={styles.cardInfo}>
-            <ThemedText type="defaultSemiBold">New Routine</ThemedText>
-            <ThemedText style={styles.cardSubtext}>Create a reusable template</ThemedText>
+            <ThemedText type="bodyLarge">New Routine</ThemedText>
+            <ThemedText type="caption" style={styles.cardSubtext}>Create a reusable template</ThemedText>
           </View>
-          <Ionicons name="chevron-forward" size={24} color="#C7C7CC" />
+          <Ionicons name="chevron-forward" size={24} color={Palette.textSecondary} />
         </TouchableOpacity>
 
       </ScrollView>
@@ -57,45 +57,42 @@ export default function WorkoutScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: Palette.background,
   },
   scrollContent: {
-    padding: 24,
-    paddingTop: 60,
+    padding: Spacing.xl,
+    paddingTop: 64,
   },
   header: {
-    marginBottom: 32,
+    marginBottom: Spacing.xxl,
   },
   subtitle: {
-    opacity: 0.6,
-    marginTop: 4,
+    color: Palette.textSecondary,
+    marginTop: Spacing.xs,
   },
   actionCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 2,
+    backgroundColor: Palette.surface,
+    padding: Spacing.lg,
+    borderRadius: Radius.lg,
+    marginBottom: Spacing.lg,
+    ...Shadows.card,
   },
   iconCircle: {
     width: 48,
     height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(7, 127, 255, 0.1)',
+    borderRadius: Radius.full,
+    backgroundColor: Palette.accentLight,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: Spacing.lg,
   },
   cardInfo: {
     flex: 1,
   },
   cardSubtext: {
-    fontSize: 13,
-    opacity: 0.6,
-    marginTop: 4,
+    color: Palette.textSecondary,
+    marginTop: Spacing.xs,
   },
 });

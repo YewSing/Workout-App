@@ -1,15 +1,14 @@
 import React from 'react';
-import { StyleSheet, View, Image, TouchableOpacity, Alert } from 'react-native';
+import { StyleSheet, View, TouchableOpacity, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { useThemeColor } from '@/hooks/use-theme-color';
 import { Ionicons } from '@expo/vector-icons';
 import { logout } from '@/api/auth';
+import { Palette, Spacing, Radius, Shadows } from '@/constants/theme';
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const cardBackground = useThemeColor({ light: '#F5F5F7', dark: '#1C1C1E' }, 'background');
 
   const handleLogout = async () => {
     try {
@@ -31,53 +30,52 @@ export default function ProfileScreen() {
     );
   };
 
+  const settingsItems = [
+    { icon: 'settings-outline' as const, label: 'Account Settings', onPress: () => {} },
+    { icon: 'notifications-outline' as const, label: 'Notifications', onPress: () => {} },
+    { icon: 'trash-bin-outline' as const, label: 'Deleted Templates', onPress: () => Alert.alert('Coming Soon', 'Trash / Deleted Templates recovery will be here.') },
+  ];
+
   return (
     <ThemedView style={styles.container}>
       <View style={styles.header}>
-        <ThemedText type="title">Profile</ThemedText>
+        <ThemedText type="displayLarge">Profile</ThemedText>
       </View>
 
       <View style={styles.profileSection}>
         <View style={styles.avatarPlaceholder}>
-          <Ionicons name="person" size={40} color="#888" />
+          <Ionicons name="person" size={40} color={Palette.textSecondary} />
         </View>
         <View style={styles.profileInfo}>
-          <ThemedText type="defaultSemiBold" style={styles.name}>Athlete</ThemedText>
-          <ThemedText style={styles.email}>user@example.com</ThemedText>
+          <ThemedText type="displaySmall" style={styles.name}>Athlete</ThemedText>
+          <ThemedText type="bodySmall" style={styles.email}>user@example.com</ThemedText>
         </View>
       </View>
 
       <View style={styles.settingsSection}>
-        <TouchableOpacity style={[styles.settingItem, { backgroundColor: cardBackground }]}>
-          <View style={styles.settingLeft}>
-            <Ionicons name="settings-outline" size={24} color="#888" />
-            <ThemedText style={styles.settingText}>Account Settings</ThemedText>
-          </View>
-          <Ionicons name="chevron-forward" size={24} color="#C7C7CC" />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={[styles.settingItem, { backgroundColor: cardBackground }]}>
-          <View style={styles.settingLeft}>
-            <Ionicons name="notifications-outline" size={24} color="#888" />
-            <ThemedText style={styles.settingText}>Notifications</ThemedText>
-          </View>
-          <Ionicons name="chevron-forward" size={24} color="#C7C7CC" />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={[styles.settingItem, { backgroundColor: cardBackground }]} onPress={() => Alert.alert('Coming Soon', 'Trash / Deleted Templates recovery will be here.')}>
-          <View style={styles.settingLeft}>
-            <Ionicons name="trash-bin-outline" size={24} color="#888" />
-            <ThemedText style={styles.settingText}>Deleted Templates</ThemedText>
-          </View>
-          <Ionicons name="chevron-forward" size={24} color="#C7C7CC" />
-        </TouchableOpacity>
+        {settingsItems.map((item, index) => (
+          <TouchableOpacity
+            key={index}
+            style={styles.settingItem}
+            onPress={item.onPress}
+            activeOpacity={0.8}
+          >
+            <View style={styles.settingLeft}>
+              <View style={styles.settingIconCircle}>
+                <Ionicons name={item.icon} size={20} color={Palette.textSecondary} />
+              </View>
+              <ThemedText type="bodyDefault">{item.label}</ThemedText>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={Palette.textSecondary} />
+          </TouchableOpacity>
+        ))}
       </View>
 
       <View style={{ flex: 1 }} />
 
-      <TouchableOpacity style={styles.logoutButton} onPress={confirmLogout}>
-        <Ionicons name="log-out-outline" size={20} color="#FF3B30" />
-        <ThemedText style={styles.logoutText}>Log Out</ThemedText>
+      <TouchableOpacity style={styles.logoutButton} onPress={confirmLogout} activeOpacity={0.8}>
+        <Ionicons name="log-out-outline" size={20} color={Palette.danger} />
+        <ThemedText type="bodyLarge" style={styles.logoutText}>Log Out</ThemedText>
       </TouchableOpacity>
     </ThemedView>
   );
@@ -86,68 +84,73 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 24,
-    paddingTop: 60,
+    backgroundColor: Palette.background,
+    padding: Spacing.xl,
+    paddingTop: 64,
   },
   header: {
-    marginBottom: 32,
+    marginBottom: Spacing.xxl,
   },
   profileSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: Spacing.xxl + Spacing.sm,
   },
   avatarPlaceholder: {
     width: 80,
     height: 80,
-    borderRadius: 40,
-    backgroundColor: '#E5E5EA',
+    borderRadius: Radius.full,
+    backgroundColor: Palette.surface,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: Spacing.lg,
+    ...Shadows.card,
   },
   profileInfo: {
     flex: 1,
   },
   name: {
-    fontSize: 24,
-    marginBottom: 4,
+    marginBottom: Spacing.xs,
   },
   email: {
-    fontSize: 14,
-    opacity: 0.6,
+    color: Palette.textSecondary,
   },
   settingsSection: {
-    gap: 12,
+    gap: Spacing.md,
   },
   settingItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
-    borderRadius: 16,
+    backgroundColor: Palette.surface,
+    padding: Spacing.lg,
+    borderRadius: Radius.lg,
+    ...Shadows.card,
   },
   settingLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: Spacing.md,
   },
-  settingText: {
-    fontSize: 16,
+  settingIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: Radius.full,
+    backgroundColor: Palette.surfaceAlt,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 16,
-    backgroundColor: 'rgba(255, 59, 48, 0.1)',
-    borderRadius: 16,
-    gap: 8,
-    marginBottom: 20,
+    padding: Spacing.lg,
+    backgroundColor: Palette.dangerLight,
+    borderRadius: Radius.lg,
+    gap: Spacing.sm,
+    marginBottom: Spacing.xl,
   },
   logoutText: {
-    color: '#FF3B30',
-    fontSize: 16,
-    fontWeight: '600',
+    color: Palette.danger,
   },
 });

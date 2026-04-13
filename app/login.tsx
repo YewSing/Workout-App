@@ -3,19 +3,15 @@ import { StyleSheet, TextInput, TouchableOpacity, View, KeyboardAvoidingView, Pl
 import { useRouter } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { useThemeColor } from '@/hooks/use-theme-color';
 import { Alert } from 'react-native';
-import { login } from '@/api/auth'; //
+import { login } from '@/api/auth';
+import { Palette, Spacing, Radius, Shadows, Typography } from '@/constants/theme';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-
-  // Get theme-specific colors for the input border and text
-  const textColor = useThemeColor({}, 'text');
-  const borderColor = useThemeColor({ light: '#E0E0E0', dark: '#333' }, 'tabIconDefault');
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -25,12 +21,8 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      const data = await login(email, password); //
-      
-      // Store your token here (e.g., using SecureStore or AsyncStorage)
-      // console.log('Login Success:', data.token);
-
-      router.replace('/(tabs)/home'); //
+      const data = await login(email, password);
+      router.replace('/(tabs)/home');
     } catch (error: any) {
       const message = error.response?.data?.message || "Login failed. Please try again.";
       Alert.alert("Login Error", message);
@@ -46,17 +38,17 @@ export default function LoginScreen() {
     >
       <ThemedView style={styles.container}>
         <View style={styles.header}>
-          <ThemedText type="title" style={styles.title}>Welcome Back</ThemedText>
-          <ThemedText style={styles.subtitle}>Enter your details to continue your gains.</ThemedText>
+          <ThemedText type="displayLarge" style={styles.title}>Welcome Back</ThemedText>
+          <ThemedText type="bodyDefault" style={styles.subtitle}>Enter your details to continue your gains.</ThemedText>
         </View>
 
         <View style={styles.form}>
           <View style={styles.inputGroup}>
-            <ThemedText type="defaultSemiBold" style={styles.label}>Email</ThemedText>
+            <ThemedText type="bodySmall" style={styles.label}>Email</ThemedText>
             <TextInput
-              style={[styles.input, { color: textColor, borderColor: borderColor }]}
+              style={styles.input}
               placeholder="name@example.com"
-              placeholderTextColor="#888"
+              placeholderTextColor={Palette.textSecondary}
               value={email}
               onChangeText={setEmail}
               autoCapitalize="none"
@@ -65,24 +57,24 @@ export default function LoginScreen() {
           </View>
 
           <View style={styles.inputGroup}>
-            <ThemedText type="defaultSemiBold" style={styles.label}>Password</ThemedText>
+            <ThemedText type="bodySmall" style={styles.label}>Password</ThemedText>
             <TextInput
-              style={[styles.input, { color: textColor, borderColor: borderColor }]}
+              style={styles.input}
               placeholder="••••••••"
-              placeholderTextColor="#888"
+              placeholderTextColor={Palette.textSecondary}
               value={password}
               onChangeText={setPassword}
               secureTextEntry
             />
           </View>
 
-          <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
+          <TouchableOpacity style={styles.loginButton} onPress={handleLogin} activeOpacity={0.8}>
             <ThemedText style={styles.loginButtonText}>Sign In</ThemedText>
           </TouchableOpacity>
         </View>
 
         <View style={styles.footer}>
-          <ThemedText>Don't have an account? </ThemedText>
+          <ThemedText type="bodyDefault">Don't have an account? </ThemedText>
           <TouchableOpacity onPress={() => router.push('/register')}>
             <ThemedText type="link">Sign Up</ThemedText>
           </TouchableOpacity>
@@ -95,57 +87,57 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 24,
+    padding: Spacing.xl,
     justifyContent: 'center',
+    backgroundColor: Palette.background,
   },
   header: {
-    marginBottom: 40,
+    marginBottom: Spacing.xxl + Spacing.sm,
   },
   title: {
-    fontSize: 32,
-    marginBottom: 8,
+    marginBottom: Spacing.sm,
   },
   subtitle: {
-    opacity: 0.6,
-    fontSize: 16,
+    color: Palette.textSecondary,
   },
   form: {
-    gap: 20,
+    gap: Spacing.xl,
   },
   inputGroup: {
-    gap: 8,
+    gap: Spacing.sm,
   },
   label: {
-    fontSize: 14,
+    color: Palette.textSecondary,
   },
   input: {
-    height: 56,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    fontSize: 16,
+    height: 52,
+    borderWidth: 1.5,
+    borderColor: Palette.border,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.lg,
+    fontSize: Typography.bodyDefault.fontSize,
+    fontFamily: Typography.bodyDefault.fontFamily,
+    color: Palette.textPrimary,
+    backgroundColor: Palette.surface,
   },
   loginButton: {
-    backgroundColor: '#007AFF', // You can also pull this from constants/Colors.ts
-    height: 56,
-    borderRadius: 12,
+    backgroundColor: Palette.accent,
+    height: 52,
+    borderRadius: Radius.md,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 2,
+    marginTop: Spacing.sm,
+    ...Shadows.button,
   },
   loginButtonText: {
-    color: '#FFF',
-    fontSize: 18,
+    color: Palette.textOnAccent,
+    fontSize: 17,
     fontWeight: '700',
+    fontFamily: Typography.bodyLarge.fontFamily,
   },
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginTop: 40,
+    marginTop: Spacing.xxl + Spacing.sm,
   },
 });

@@ -1,22 +1,23 @@
 import { Link } from "expo-router";
-import { StyleSheet, View, ImageBackground, TouchableOpacity } from "react-native";
+import { StyleSheet, View, TouchableOpacity } from "react-native";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { Palette, Spacing, Radius, Shadows } from '@/constants/theme';
 
 export default function WelcomeScreen() {
   return (
     <ThemedView style={styles.container}>
       {/* Top Section: Branding & Motivation */}
       <View style={styles.headerSection}>
-        <ThemedText type="title" style={styles.brandName}>
+        <ThemedText type="displayLarge" style={styles.brandName}>
           My Gym
         </ThemedText>
-        <ThemedText style={styles.tagline}>
+        <ThemedText type="bodyDefault" style={styles.tagline}>
           Sculpt your body. Track your progress.
         </ThemedText>
       </View>
 
-      {/* Middle Section: Visual Aesthetic (Optional Placeholder) */}
+      {/* Middle Section: Visual Aesthetic */}
       <View style={styles.visualSection}>
         <View style={styles.accentCircle} />
       </View>
@@ -24,14 +25,14 @@ export default function WelcomeScreen() {
       {/* Bottom Section: Auth Actions */}
       <View style={styles.footerSection}>
         <Link href="/login" asChild>
-          <TouchableOpacity style={styles.primaryButton}>
+          <TouchableOpacity style={styles.primaryButton} activeOpacity={0.8}>
             <ThemedText style={styles.primaryButtonText}>Sign In</ThemedText>
           </TouchableOpacity>
         </Link>
 
         <Link href="/register" asChild style={styles.secondaryLink}>
           <TouchableOpacity>
-            <ThemedText type="defaultSemiBold">
+            <ThemedText type="bodyDefault">
               New here? <ThemedText type="link">Create an account</ThemedText>
             </ThemedText>
           </TouchableOpacity>
@@ -44,8 +45,9 @@ export default function WelcomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 24,
+    padding: Spacing.xl,
     justifyContent: "space-between",
+    backgroundColor: Palette.background,
   },
   headerSection: {
     marginTop: 80,
@@ -54,11 +56,10 @@ const styles = StyleSheet.create({
   brandName: {
     fontSize: 42,
     letterSpacing: 4,
-    fontWeight: "900",
   },
   tagline: {
-    opacity: 0.7,
-    marginTop: 8,
+    color: Palette.textSecondary,
+    marginTop: Spacing.sm,
     textAlign: "center",
   },
   visualSection: {
@@ -70,32 +71,28 @@ const styles = StyleSheet.create({
     width: 200,
     height: 200,
     borderRadius: 100,
-    backgroundColor: "#007AFF",
-    opacity: 0.1,
+    backgroundColor: Palette.accent,
+    opacity: 0.12,
     position: "absolute",
   },
   footerSection: {
     marginBottom: 40,
-    gap: 16,
+    gap: Spacing.lg,
   },
   primaryButton: {
-    backgroundColor: "#007AFF", // Using a standard blue, but you can use useThemeColor hook
-    paddingVertical: 16,
-    borderRadius: 12,
+    backgroundColor: Palette.accent,
+    paddingVertical: Spacing.lg,
+    borderRadius: Radius.md,
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    ...Shadows.button,
   },
   primaryButtonText: {
-    color: "#FFFFFF",
+    color: Palette.textOnAccent,
     fontSize: 18,
     fontWeight: "700",
   },
   secondaryLink: {
     alignItems: "center",
-    marginTop: 8,
+    marginTop: Spacing.sm,
   },
 });

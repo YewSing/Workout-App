@@ -20,7 +20,7 @@ const MAPPING = {
   'chevron.right': 'chevron-right',
   'fitness.center': 'fitness-center',
   'person.circle.fill': 'account-circle',
-} as IconMapping;
+} as any as IconMapping;
 
 /**
  * An icon component that uses native SF Symbols on iOS, and Material Icons on Android and web.

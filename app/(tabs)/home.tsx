@@ -3,17 +3,15 @@ import { StyleSheet, View, ScrollView, TouchableOpacity, Dimensions, Modal, Aler
 import { useRouter } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { useThemeColor } from '@/hooks/use-theme-color';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Ionicons } from '@expo/vector-icons';
 import { fetchWorkouts, deleteWorkoutTemplate } from '@/api/workout';
+import { Palette, Spacing, Radius, Shadows, Typography } from '@/constants/theme';
 
 const { width } = Dimensions.get('window');
 
 export default function HomeScreen() {
   const router = useRouter();
-  const cardBackground = useThemeColor({ light: '#F5F5F7', dark: '#F5F5F7' }, 'background');
-  const accentColor = '#007AFF';
 
   const [workouts, setWorkouts] = useState<any[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
@@ -66,112 +64,182 @@ export default function HomeScreen() {
     );
   };
 
+  // Graph data
+  const graphData = [40, 70, 45, 90, 65, 80, 100];
+  const dayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  const maxGraphHeight = 100;
+  const maxValue = Math.max(...graphData);
+
   return (
     <ThemedView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
 
-        {/* Header Section */}
+        {/* ── Header Section ── */}
         <View style={styles.header}>
-          <ThemedText type="title">Dashboard</ThemedText>
-          <ThemedText style={styles.subtitle}>Tracking your progress</ThemedText>
+          <ThemedText type="displayLarge" style={styles.greeting}>Dashboard</ThemedText>
+          <ThemedText type="bodySmall" style={styles.subtitle}>Tracking your progress</ThemedText>
         </View>
 
-        {/* Section 1: Analytics Graph Card */}
-        <ThemedView style={[styles.analyticsCard, { backgroundColor: cardBackground }]}>
+        {/* ── Weekly Volume Card ── */}
+        <View style={styles.analyticsCard}>
           <View style={styles.cardHeader}>
-            <ThemedText type="defaultSemiBold">Weekly Volume</ThemedText>
-            <ThemedText style={{ color: accentColor, fontSize: 12 }}>+12% from last week</ThemedText>
+            <ThemedText type="bodyLarge">Weekly Volume</ThemedText>
+            <View style={styles.trendBadge}>
+              <Ionicons name="trending-up" size={14} color={Palette.accent} />
+              <ThemedText type="caption" style={{ color: Palette.accent, marginLeft: 4 }}>
+                +12%
+              </ThemedText>
+            </View>
           </View>
 
-          {/* Visual representation of a graph */}
+          {/* Graph bars */}
           <View style={styles.graphContainer}>
-            {[40, 70, 45, 90, 65, 80, 100].map((height, index) => (
-              <View key={index} style={styles.graphBarContainer}>
-                <View style={[styles.graphBar, { height: height, backgroundColor: accentColor }]} />
-                <ThemedText style={styles.graphLabel}>{['M', 'T', 'W', 'T', 'R', 'F', 'S'][index]}</ThemedText>
-              </View>
-            ))}
+            {graphData.map((value, index) => {
+              const barHeight = (value / maxValue) * maxGraphHeight;
+              // Highlight the tallest bar with accent
+              const isHighest = value === maxValue;
+              return (
+                <View key={index} style={styles.graphBarContainer}>
+                  <View
+                    style={[
+                      styles.graphBar,
+                      {
+                        height: barHeight,
+                        backgroundColor: isHighest ? Palette.accent : Palette.border,
+                      },
+                    ]}
+                  />
+                  <ThemedText type="caption" style={styles.graphLabel}>
+                    {dayLabels[index]}
+                  </ThemedText>
+                </View>
+              );
+            })}
           </View>
-        </ThemedView>
+        </View>
 
-        {/* Section 2: Workout Redirection Cards */}
+        {/* ── Quick Stats Row ── */}
+        <View style={styles.statsRow}>
+          <View style={styles.statCard}>
+            <ThemedText type="caption" style={styles.statLabel}>This Week</ThemedText>
+            <ThemedText type="displaySmall" style={styles.statValue}>5</ThemedText>
+            <ThemedText type="caption" style={styles.statUnit}>Sessions</ThemedText>
+          </View>
+          <View style={styles.statCard}>
+            <ThemedText type="caption" style={styles.statLabel}>Total Volume</ThemedText>
+            <ThemedText type="displaySmall" style={styles.statValue}>12.4k</ThemedText>
+            <ThemedText type="caption" style={styles.statUnit}>kg</ThemedText>
+          </View>
+          <View style={styles.statCard}>
+            <ThemedText type="caption" style={styles.statLabel}>Avg Duration</ThemedText>
+            <ThemedText type="displaySmall" style={styles.statValue}>58</ThemedText>
+            <ThemedText type="caption" style={styles.statUnit}>min</ThemedText>
+          </View>
+        </View>
+
+        {/* ── My Templates Section ── */}
         <View style={styles.sectionHeader}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <ThemedText type="subtitle">My Templates</ThemedText>
-            
+          <ThemedText type="headingMedium">My Templates</ThemedText>
+          <View style={styles.sectionActions}>
             <TouchableOpacity 
               onPress={() => router.push('/workout/new-template')}
-              style={styles.addButtonSmall}
+              style={styles.addButton}
+              activeOpacity={0.7}
             >
-              <Ionicons name="add-circle" size={24} color={accentColor} />
+              <Ionicons name="add" size={18} color={Palette.textOnAccent} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/workout')}>
+              <ThemedText type="bodySmall" style={{ color: Palette.accent }}>View All</ThemedText>
             </TouchableOpacity>
           </View>
-
-          <TouchableOpacity onPress={() => router.push('/(tabs)/workout')}>
-            <ThemedText type="link">View All</ThemedText>
-          </TouchableOpacity>
         </View>
 
+        {/* ── Template Cards Grid ── */}
         <View style={styles.cardGrid}>
           {workouts.map((item) => (
             <TouchableOpacity
               key={item.id}
-              style={[styles.exerciseCard, { backgroundColor: cardBackground }]}
+              style={styles.templateCard}
               onPress={() => router.push(`/workout/${item.id}`)}
               activeOpacity={0.8}
             >
+              {/* Top row: icon + more button */}
               <View style={styles.cardTopRow}>
                 <View style={styles.iconCircle}>
-                  <IconSymbol name="fitness.center" size={24} color={accentColor} />
+                  <IconSymbol name="fitness.center" size={20} color={Palette.accent} />
                 </View>
                 <TouchableOpacity 
                   style={styles.moreActionButton}
                   onPress={() => handleMoreActions(item.id)}
                   hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
                 >
-                  <Ionicons name="ellipsis-horizontal" size={20} color="#888" />
+                  <Ionicons name="ellipsis-horizontal" size={18} color={Palette.textSecondary} />
                 </TouchableOpacity>
               </View>
-              <ThemedText type="defaultSemiBold" numberOfLines={1}>{item.name}</ThemedText>
-              <ThemedText style={styles.targetText}>{item.description || 'No description'}</ThemedText>
+
+              {/* Card content */}
+              <ThemedText type="bodyLarge" numberOfLines={1} style={styles.cardTitle}>
+                {item.name}
+              </ThemedText>
+              <ThemedText type="caption" numberOfLines={2} style={styles.cardDesc}>
+                {item.description || 'No description'}
+              </ThemedText>
             </TouchableOpacity>
           ))}
         </View>
 
       </ScrollView>
 
-      {/* Action Bottom Sheet Modal */}
+      {/* ── Action Bottom Sheet Modal ── */}
       <Modal
         visible={modalVisible}
         transparent={true}
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setModalVisible(false)}
       >
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setModalVisible(false)}>
           <View style={styles.actionSheetContainer}>
             <View style={styles.dragIndicator} />
-            <ThemedText style={styles.sheetTitle}>Template Actions</ThemedText>
+            <ThemedText type="bodySmall" style={styles.sheetTitle}>Template Actions</ThemedText>
+
+            <TouchableOpacity style={styles.actionItem} onPress={() => {
+                setModalVisible(false);
+                if (selectedWorkoutId) router.push(`/workout/${selectedWorkoutId}`);
+            }}>
+              <View style={styles.actionIconCircle}>
+                <Ionicons name="create-outline" size={20} color={Palette.textPrimary} />
+              </View>
+              <ThemedText type="bodyDefault" style={styles.actionText}>Edit Template</ThemedText>
+            </TouchableOpacity>
 
             <TouchableOpacity style={styles.actionItem} onPress={() => Alert.alert("Coming Soon", "Duplicate template feature")}>
-              <Ionicons name="copy-outline" size={22} color="#000" />
-              <ThemedText style={styles.actionText}>Duplicate Template</ThemedText>
+              <View style={styles.actionIconCircle}>
+                <Ionicons name="copy-outline" size={20} color={Palette.textPrimary} />
+              </View>
+              <ThemedText type="bodyDefault" style={styles.actionText}>Duplicate Template</ThemedText>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.actionItem} onPress={() => Alert.alert("Coming Soon", "Pin to Top feature")}>
-              <Ionicons name="star-outline" size={22} color="#000" />
-              <ThemedText style={styles.actionText}>Pin to Top</ThemedText>
+              <View style={styles.actionIconCircle}>
+                <Ionicons name="star-outline" size={20} color={Palette.textPrimary} />
+              </View>
+              <ThemedText type="bodyDefault" style={styles.actionText}>Pin to Top</ThemedText>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.actionItem} onPress={() => Alert.alert("Coming Soon", "Share feature")}>
-              <Ionicons name="share-outline" size={22} color="#000" />
-              <ThemedText style={styles.actionText}>Share Template</ThemedText>
+              <View style={styles.actionIconCircle}>
+                <Ionicons name="share-outline" size={20} color={Palette.textPrimary} />
+              </View>
+              <ThemedText type="bodyDefault" style={styles.actionText}>Share Template</ThemedText>
             </TouchableOpacity>
 
             <View style={styles.divider} />
 
-            <TouchableOpacity style={[styles.actionItem, styles.destructiveAction]} onPress={handleDelete}>
-              <Ionicons name="trash-outline" size={22} color="#FF3B30" />
-              <ThemedText style={[styles.actionText, { color: '#FF3B30' }]}>Delete Template</ThemedText>
+            <TouchableOpacity style={styles.actionItem} onPress={handleDelete}>
+              <View style={[styles.actionIconCircle, { backgroundColor: Palette.dangerLight }]}>
+                <Ionicons name="trash-outline" size={20} color={Palette.danger} />
+              </View>
+              <ThemedText type="bodyDefault" style={{ color: Palette.danger }}>Delete Template</ThemedText>
             </TouchableOpacity>
             
           </View>
@@ -184,142 +252,202 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: Palette.background,
   },
   scrollContent: {
-    padding: 24,
-    paddingTop: 60,
+    padding: Spacing.xl,
+    paddingTop: 64,
+    paddingBottom: Spacing.xxxl,
   },
+
+  // ── Header ──
   header: {
-    marginBottom: 24,
+    marginBottom: Spacing.xl,
+  },
+  greeting: {
+    color: Palette.textPrimary,
   },
   subtitle: {
-    opacity: 0.6,
+    color: Palette.textSecondary,
+    marginTop: Spacing.xs,
   },
+
+  // ── Analytics Card ──
   analyticsCard: {
-    padding: 20,
-    borderRadius: 20,
-    marginBottom: 32,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 2,
+    backgroundColor: Palette.surface,
+    padding: Spacing.xl,
+    borderRadius: Radius.lg,
+    marginBottom: Spacing.lg,
+    ...Shadows.card,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: Spacing.xl,
+  },
+  trendBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Palette.accentLight,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    borderRadius: Radius.full,
   },
   graphContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
     height: 120,
-    paddingTop: 10,
+    paddingTop: Spacing.md,
   },
   graphBarContainer: {
     alignItems: 'center',
     flex: 1,
   },
   graphBar: {
-    width: 8,
-    borderRadius: 4,
-    marginBottom: 8,
+    width: 10,
+    borderRadius: 5,
+    marginBottom: Spacing.sm,
   },
   graphLabel: {
-    fontSize: 10,
-    opacity: 0.5,
+    color: Palette.textSecondary,
   },
+
+  // ── Stats Row ──
+  statsRow: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    marginBottom: Spacing.xxl,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: Palette.surface,
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
+    alignItems: 'center',
+    ...Shadows.card,
+  },
+  statLabel: {
+    color: Palette.textSecondary,
+    marginBottom: Spacing.xs,
+  },
+  statValue: {
+    color: Palette.textPrimary,
+  },
+  statUnit: {
+    color: Palette.textSecondary,
+    marginTop: 2,
+  },
+
+  // ── Section Header ──
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: Spacing.lg,
   },
+  sectionActions: {
+    flexDirection: 'row', 
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  addButton: {
+    width: 28,
+    height: 28,
+    borderRadius: Radius.full,
+    backgroundColor: Palette.accent,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  // ── Template Cards ──
   cardGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    gap: 16,
+    gap: Spacing.md,
   },
-  exerciseCard: {
-    width: (width - 64) / 2,
-    padding: 16,
-    borderRadius: 16,
-    alignItems: 'flex-start',
+  templateCard: {
+    width: (width - Spacing.xl * 2 - Spacing.md) / 2,
+    backgroundColor: Palette.surface,
+    padding: Spacing.lg,
+    borderRadius: Radius.lg,
+    ...Shadows.card,
   },
   cardTopRow: {
     flexDirection: 'row', 
     width: '100%', 
     justifyContent: 'space-between', 
     alignItems: 'flex-start', 
-    marginBottom: 12
-  },
-  moreActionButton: {
-    padding: 4,
-  },
-  addButtonSmall: {
-    paddingHorizontal: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
+    marginBottom: Spacing.md,
   },
   iconCircle: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(7, 127, 255, 0.34)',
+    borderRadius: Radius.full,
+    backgroundColor: Palette.accentLight,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
   },
-  targetText: {
-    fontSize: 12,
-    opacity: 0.5,
-    marginTop: 4,
+  moreActionButton: {
+    padding: Spacing.xs,
   },
+  cardTitle: {
+    color: Palette.textPrimary,
+    marginBottom: Spacing.xs,
+  },
+  cardDesc: {
+    color: Palette.textSecondary,
+  },
+
+  // ── Bottom Sheet Modal ──
   modalOverlay: {
     flex: 1, 
-    backgroundColor: 'rgba(0,0,0,0.4)', 
+    backgroundColor: Palette.overlay, 
     justifyContent: 'flex-end',
   },
   actionSheetContainer: {
-    backgroundColor: '#fff', 
-    borderTopLeftRadius: 20, 
-    borderTopRightRadius: 20, 
-    padding: 24, 
+    backgroundColor: Palette.surface, 
+    borderTopLeftRadius: Radius.xl, 
+    borderTopRightRadius: Radius.xl, 
+    padding: Spacing.xl, 
     paddingBottom: 40,
   },
   dragIndicator: {
     width: 40, 
     height: 5, 
-    backgroundColor: '#DDDDDD', 
+    backgroundColor: Palette.border, 
     borderRadius: 3, 
     alignSelf: 'center', 
-    marginBottom: 20,
+    marginBottom: Spacing.xl,
   },
   sheetTitle: {
-    fontSize: 18, 
-    fontWeight: '700', 
-    marginBottom: 16, 
-    opacity: 0.5
+    color: Palette.textSecondary, 
+    marginBottom: Spacing.lg,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   actionItem: {
     flexDirection: 'row', 
     alignItems: 'center', 
-    paddingVertical: 16, 
-    gap: 12
+    paddingVertical: Spacing.md, 
+    gap: Spacing.md,
+  },
+  actionIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: Radius.full,
+    backgroundColor: Palette.surfaceAlt,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   actionText: {
-    fontSize: 16, 
-    color: '#000'
+    color: Palette.textPrimary,
   },
   divider: {
     height: 1, 
-    backgroundColor: '#EEE', 
-    marginVertical: 8
+    backgroundColor: Palette.border, 
+    marginVertical: Spacing.sm,
   },
-  destructiveAction: {
-    marginTop: 8
-  }
 });

@@ -1,11 +1,25 @@
 import { StyleSheet, Text, type TextProps } from 'react-native';
 
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { Typography, Palette } from '@/constants/theme';
 
 export type ThemedTextProps = TextProps & {
   lightColor?: string;
   darkColor?: string;
-  type?: 'default' | 'title' | 'defaultSemiBold' | 'subtitle' | 'link';
+  type?:
+    | 'default'
+    | 'title'
+    | 'defaultSemiBold'
+    | 'subtitle'
+    | 'link'
+    | 'displayLarge'
+    | 'displaySmall'
+    | 'headingMedium'
+    | 'bodyLarge'
+    | 'bodyDefault'
+    | 'bodySmall'
+    | 'caption'
+    | 'label';
 };
 
 export function ThemedText({
@@ -21,6 +35,16 @@ export function ThemedText({
     <Text
       style={[
         { color },
+        // ── New Design System Types ──
+        type === 'displayLarge' ? styles.displayLarge : undefined,
+        type === 'displaySmall' ? styles.displaySmall : undefined,
+        type === 'headingMedium' ? styles.headingMedium : undefined,
+        type === 'bodyLarge' ? styles.bodyLarge : undefined,
+        type === 'bodyDefault' ? styles.bodyDefault : undefined,
+        type === 'bodySmall' ? styles.bodySmall : undefined,
+        type === 'caption' ? styles.caption : undefined,
+        type === 'label' ? styles.label : undefined,
+        // ── Legacy Types (backward compat) ──
         type === 'default' ? styles.default : undefined,
         type === 'title' ? styles.title : undefined,
         type === 'defaultSemiBold' ? styles.defaultSemiBold : undefined,
@@ -34,27 +58,46 @@ export function ThemedText({
 }
 
 const styles = StyleSheet.create({
+  // ── New Design System ──
+  displayLarge: {
+    ...Typography.displayLarge,
+  },
+  displaySmall: {
+    ...Typography.displaySmall,
+  },
+  headingMedium: {
+    ...Typography.headingMedium,
+  },
+  bodyLarge: {
+    ...Typography.bodyLarge,
+  },
+  bodyDefault: {
+    ...Typography.bodyDefault,
+  },
+  bodySmall: {
+    ...Typography.bodySmall,
+  },
+  caption: {
+    ...Typography.caption,
+  },
+  label: {
+    ...Typography.label,
+  },
+  // ── Legacy Styles (backward compat — migrate away over time) ──
   default: {
-    fontSize: 16,
-    lineHeight: 24,
+    ...Typography.bodyDefault,
   },
   defaultSemiBold: {
-    fontSize: 16,
-    lineHeight: 24,
-    fontWeight: '600',
+    ...Typography.bodyLarge,
   },
   title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    lineHeight: 32,
+    ...Typography.displayLarge,
   },
   subtitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    ...Typography.headingMedium,
   },
   link: {
-    lineHeight: 30,
-    fontSize: 16,
-    color: '#0a7ea4',
+    ...Typography.bodyDefault,
+    color: Palette.accent,
   },
 });

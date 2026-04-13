@@ -3,9 +3,9 @@ import { StyleSheet, TextInput, TouchableOpacity, View, KeyboardAvoidingView, Pl
 import { useRouter } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { useThemeColor } from '@/hooks/use-theme-color';
 import { register } from "../api/auth";
 import { Alert } from 'react-native';
+import { Palette, Spacing, Radius, Shadows, Typography } from '@/constants/theme';
 
 export default function RegisterScreen() {
   const [username, setUsername] = useState("");
@@ -13,9 +13,6 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const router = useRouter();
-
-  const textColor = useThemeColor({}, 'text');
-  const borderColor = useThemeColor({ light: '#E0E0E0', dark: '#333' }, 'tabIconDefault');
 
   const handleRegister = async () => {
     try {
@@ -37,28 +34,28 @@ export default function RegisterScreen() {
       <ThemedView style={styles.container}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
-            <ThemedText type="title" style={styles.title}>Start Your Journey</ThemedText>
-            <ThemedText style={styles.subtitle}>Build your V-shape physique today.</ThemedText>
+            <ThemedText type="displayLarge" style={styles.title}>Start Your Journey</ThemedText>
+            <ThemedText type="bodyDefault" style={styles.subtitle}>Build your V-shape physique today.</ThemedText>
           </View>
 
           <View style={styles.form}>
             <View style={styles.inputGroup}>
-              <ThemedText type="defaultSemiBold" style={styles.label}>Full Name</ThemedText>
+              <ThemedText type="bodySmall" style={styles.label}>Full Name</ThemedText>
               <TextInput
-                style={[styles.input, { color: textColor, borderColor: borderColor }]}
+                style={styles.input}
                 placeholder="John Doe"
-                placeholderTextColor="#888"
+                placeholderTextColor={Palette.textSecondary}
                 value={username}
                 onChangeText={setUsername}
               />
             </View>
 
             <View style={styles.inputGroup}>
-              <ThemedText type="defaultSemiBold" style={styles.label}>Email</ThemedText>
+              <ThemedText type="bodySmall" style={styles.label}>Email</ThemedText>
               <TextInput
-                style={[styles.input, { color: textColor, borderColor: borderColor }]}
+                style={styles.input}
                 placeholder="name@example.com"
-                placeholderTextColor="#888"
+                placeholderTextColor={Palette.textSecondary}
                 value={email}
                 onChangeText={setEmail}
                 autoCapitalize="none"
@@ -67,11 +64,11 @@ export default function RegisterScreen() {
             </View>
 
             <View style={styles.inputGroup}>
-              <ThemedText type="defaultSemiBold" style={styles.label}>Password</ThemedText>
+              <ThemedText type="bodySmall" style={styles.label}>Password</ThemedText>
               <TextInput
-                style={[styles.input, { color: textColor, borderColor: borderColor }]}
+                style={styles.input}
                 placeholder="Min. 8 characters"
-                placeholderTextColor="#888"
+                placeholderTextColor={Palette.textSecondary}
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry
@@ -79,24 +76,24 @@ export default function RegisterScreen() {
             </View>
 
             <View style={styles.inputGroup}>
-              <ThemedText type="defaultSemiBold" style={styles.label}>Confirm Password</ThemedText>
+              <ThemedText type="bodySmall" style={styles.label}>Confirm Password</ThemedText>
               <TextInput
-                style={[styles.input, { color: textColor, borderColor: borderColor }]}
+                style={styles.input}
                 placeholder="Repeat password"
-                placeholderTextColor="#888"
+                placeholderTextColor={Palette.textSecondary}
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
                 secureTextEntry
               />
             </View>
 
-            <TouchableOpacity style={styles.registerButton} onPress={handleRegister}>
+            <TouchableOpacity style={styles.registerButton} onPress={handleRegister} activeOpacity={0.8}>
               <ThemedText style={styles.registerButtonText}>Create Account</ThemedText>
             </TouchableOpacity>
           </View>
 
           <View style={styles.footer}>
-            <ThemedText>Already have an account? </ThemedText>
+            <ThemedText type="bodyDefault">Already have an account? </ThemedText>
             <TouchableOpacity onPress={() => router.push('/login')}>
               <ThemedText type="link">Sign In</ThemedText>
             </TouchableOpacity>
@@ -110,55 +107,60 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 24,
+    paddingHorizontal: Spacing.xl,
+    backgroundColor: Palette.background,
   },
   scrollContent: {
-    paddingVertical: 60,
+    paddingVertical: 64,
     justifyContent: 'center',
   },
   header: {
-    marginBottom: 32,
+    marginBottom: Spacing.xxl,
   },
   title: {
-    fontSize: 32,
-    marginBottom: 8,
+    marginBottom: Spacing.sm,
   },
   subtitle: {
-    opacity: 0.6,
-    fontSize: 16,
+    color: Palette.textSecondary,
   },
   form: {
-    gap: 18,
+    gap: Spacing.lg + Spacing.xs,
   },
   inputGroup: {
-    gap: 6,
+    gap: Spacing.sm,
   },
   label: {
-    fontSize: 14,
+    color: Palette.textSecondary,
   },
   input: {
-    height: 56,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    fontSize: 16,
+    height: 52,
+    borderWidth: 1.5,
+    borderColor: Palette.border,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.lg,
+    fontSize: Typography.bodyDefault.fontSize,
+    fontFamily: Typography.bodyDefault.fontFamily,
+    color: Palette.textPrimary,
+    backgroundColor: Palette.surface,
   },
   registerButton: {
-    backgroundColor: '#007AFF',
-    height: 56,
-    borderRadius: 12,
+    backgroundColor: Palette.accent,
+    height: 52,
+    borderRadius: Radius.md,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: Spacing.md,
+    ...Shadows.button,
   },
   registerButtonText: {
-    color: '#FFF',
-    fontSize: 18,
+    color: Palette.textOnAccent,
+    fontSize: 17,
     fontWeight: '700',
+    fontFamily: Typography.bodyLarge.fontFamily,
   },
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginTop: 32,
+    marginTop: Spacing.xxl,
   },
 });
