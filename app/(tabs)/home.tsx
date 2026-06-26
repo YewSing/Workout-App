@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View, ScrollView, TouchableOpacity, Dimensions, Modal, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
@@ -6,25 +6,142 @@ import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Ionicons } from '@expo/vector-icons';
 import { fetchWorkouts, deleteWorkoutTemplate } from '@/api/workout';
-import { Palette, Spacing, Radius, Shadows, Typography } from '@/constants/theme';
+import { Palette, Spacing, Radius, Shadows } from '@/constants/theme';
+import { SegmentedToggle } from '@/components/ui/SegmentedToggle';
+import { WeeklyVolumeChart } from '@/components/dashboard/WeeklyVolumeChart';
+import { MonthCalendar } from '@/components/dashboard/MonthCalendar';
+import { StatsSummary } from '@/components/dashboard/StatsSummary';
 
 const { width } = Dimensions.get('window');
+
+interface SessionSummary {
+  sessionId: number;
+  dateTime: string;
+  duration: string;
+  volume: number;
+}
+
+const unwrap = (v: any): any[] => (v && v.$values ? v.$values : Array.isArray(v) ? v : []);
+
+function durationToMinutes(duration: string | null | undefined): number {
+  if (!duration) return 0;
+  const parts = duration.split(':');
+  if (parts.length < 2) return 0;
+  return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+}
+
+function startOfWeek(offsetWeeks: number): Date {
+  const now = new Date();
+  const day = now.getDay(); // 0 = Sunday
+  const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Monday of current week
+  const monday = new Date(now);
+  monday.setDate(diff + offsetWeeks * 7);
+  monday.setHours(0, 0, 0, 0);
+  return monday;
+}
+
+function formatDateDdMmYyyy(d: Date): string {
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+}
+
+function formatVolume(value: number): string {
+  return value >= 1000 ? `${(value / 1000).toFixed(1)}k` : String(Math.round(value));
+}
+
+function computeWeekData(allSessions: SessionSummary[], weekOffset: number) {
+  const weekStart = startOfWeek(weekOffset);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 7);
+
+  const bars: { date: Date; volume: number; durationMinutes: number }[] = [];
+  const daySessions: SessionSummary[][] = [];
+  for (let i = 0; i < 7; i++) {
+    const day = new Date(weekStart);
+    day.setDate(day.getDate() + i);
+    const next = new Date(day);
+    next.setDate(next.getDate() + 1);
+    const sessionsForDay = allSessions.filter(s => { const d = new Date(s.dateTime); return d >= day && d < next; });
+    daySessions.push(sessionsForDay);
+    bars.push({
+      date: day,
+      volume: sessionsForDay.reduce((sum, s) => sum + (s.volume || 0), 0),
+      durationMinutes: sessionsForDay.reduce((sum, s) => sum + durationToMinutes(s.duration), 0),
+    });
+  }
+
+  const weekSessions = daySessions.flat();
+  const sessionCount = weekSessions.length;
+  const totalVolume = weekSessions.reduce((sum, s) => sum + (s.volume || 0), 0);
+  const avgMinutes = sessionCount > 0
+    ? Math.round(weekSessions.reduce((sum, s) => sum + durationToMinutes(s.duration), 0) / sessionCount)
+    : 0;
+
+  let periodLabel: string;
+  if (weekOffset === 0) {
+    periodLabel = 'This Week';
+  } else {
+    const weekEndInclusive = new Date(weekEnd);
+    weekEndInclusive.setDate(weekEndInclusive.getDate() - 1);
+    periodLabel = `${formatDateDdMmYyyy(weekStart)} – ${formatDateDdMmYyyy(weekEndInclusive)}`;
+  }
+
+  return { bars, sessionCount, totalVolume, avgMinutes, periodLabel, canGoNext: weekOffset < 0 };
+}
+
+function computeMonthData(allSessions: SessionSummary[], monthOffset: number) {
+  const base = new Date();
+  base.setDate(1);
+  base.setHours(0, 0, 0, 0);
+  base.setMonth(base.getMonth() + monthOffset);
+  const year = base.getFullYear();
+  const month = base.getMonth();
+  const monthStart = new Date(year, month, 1);
+  const monthEnd = new Date(year, month + 1, 1);
+
+  const monthSessions = allSessions.filter(s => { const d = new Date(s.dateTime); return d >= monthStart && d < monthEnd; });
+  const trainedDates = new Set<string>(
+    monthSessions.map(s => {
+      const d = new Date(s.dateTime);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    })
+  );
+
+  const sessionCount = monthSessions.length;
+  const totalVolume = monthSessions.reduce((sum, s) => sum + (s.volume || 0), 0);
+  const avgMinutes = sessionCount > 0
+    ? Math.round(monthSessions.reduce((sum, s) => sum + durationToMinutes(s.duration), 0) / sessionCount)
+    : 0;
+
+  return { year, month, trainedDates, sessionCount, totalVolume, avgMinutes, canGoNext: monthOffset < 0 };
+}
 
 export default function HomeScreen() {
   const router = useRouter();
 
   const [workouts, setWorkouts] = useState<any[]>([]);
+  const [allSessions, setAllSessions] = useState<SessionSummary[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedWorkoutId, setSelectedWorkoutId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'chart' | 'calendar'>('chart');
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [monthOffset, setMonthOffset] = useState(0);
 
   const loadWorkouts = async () => {
     try {
       const data = await fetchWorkouts();
-      if (data && data.$values) {
-        setWorkouts(data.$values);
-      } else if (Array.isArray(data)) {
-        setWorkouts(data);
+      const list: any[] = data && data.$values ? data.$values : Array.isArray(data) ? data : [];
+      setWorkouts(list);
+
+      // Collect all sessions from all variations across all workouts
+      const collectedSessions: SessionSummary[] = [];
+      for (const w of list) {
+        for (const v of unwrap(w.variations)) {
+          for (const s of unwrap(v.sessions)) {
+            collectedSessions.push(s);
+          }
+        }
       }
+      setAllSessions(collectedSessions);
     } catch (err) {
       console.log("Error loading workouts", err);
     }
@@ -33,6 +150,10 @@ export default function HomeScreen() {
   useEffect(() => {
     loadWorkouts();
   }, []);
+
+  const weekData = useMemo(() => computeWeekData(allSessions, weekOffset), [allSessions, weekOffset]);
+  const monthData = useMemo(() => computeMonthData(allSessions, monthOffset), [allSessions, monthOffset]);
+  const activeStats = viewMode === 'chart' ? weekData : monthData;
 
   const handleMoreActions = (id: string) => {
     setSelectedWorkoutId(id);
@@ -55,7 +176,7 @@ export default function HomeScreen() {
               await deleteWorkoutTemplate(selectedWorkoutId);
               setModalVisible(false);
               loadWorkouts();
-            } catch (err) {
+            } catch {
               Alert.alert("Error", "Could not delete template");
             }
           }
@@ -64,82 +185,61 @@ export default function HomeScreen() {
     );
   };
 
-  // Graph data
-  const graphData = [40, 70, 45, 90, 65, 80, 100];
-  const dayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-  const maxGraphHeight = 100;
-  const maxValue = Math.max(...graphData);
-
   return (
     <ThemedView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
 
         {/* ── Header Section ── */}
         <View style={styles.header}>
-          <ThemedText type="displayLarge" style={styles.greeting}>Dashboard</ThemedText>
-          <ThemedText type="bodySmall" style={styles.subtitle}>Tracking your progress</ThemedText>
+          <View>
+            <ThemedText type="displayLarge" style={styles.greeting}>Dashboard</ThemedText>
+            <ThemedText type="bodySmall" style={styles.subtitle}>Tracking your progress</ThemedText>
+          </View>
+          <SegmentedToggle
+            options={[
+              { value: 'chart', label: 'Chart' },
+              { value: 'calendar', label: 'Calendar' },
+            ]}
+            value={viewMode}
+            onChange={(v) => setViewMode(v as 'chart' | 'calendar')}
+          />
         </View>
 
-        {/* ── Weekly Volume Card ── */}
-        <View style={styles.analyticsCard}>
-          <View style={styles.cardHeader}>
-            <ThemedText type="bodyLarge">Weekly Volume</ThemedText>
-            <View style={styles.trendBadge}>
-              <Ionicons name="trending-up" size={14} color={Palette.accent} />
-              <ThemedText type="caption" style={{ color: Palette.accent, marginLeft: 4 }}>
-                +12%
-              </ThemedText>
-            </View>
-          </View>
+        {/* ── Activity Card (chart or calendar + stats) ── */}
+        <View style={styles.dashboardCard}>
+          {viewMode === 'chart' ? (
+            <WeeklyVolumeChart
+              bars={weekData.bars}
+              periodLabel={weekData.periodLabel}
+              onPrev={() => setWeekOffset(o => o - 1)}
+              onNext={() => setWeekOffset(o => Math.min(o + 1, 0))}
+              canGoNext={weekData.canGoNext}
+            />
+          ) : (
+            <MonthCalendar
+              year={monthData.year}
+              month={monthData.month}
+              trainedDates={monthData.trainedDates}
+              onPrev={() => setMonthOffset(o => o - 1)}
+              onNext={() => setMonthOffset(o => Math.min(o + 1, 0))}
+              canGoNext={monthData.canGoNext}
+            />
+          )}
 
-          {/* Graph bars */}
-          <View style={styles.graphContainer}>
-            {graphData.map((value, index) => {
-              const barHeight = (value / maxValue) * maxGraphHeight;
-              // Highlight the tallest bar with accent
-              const isHighest = value === maxValue;
-              return (
-                <View key={index} style={styles.graphBarContainer}>
-                  <View
-                    style={[
-                      styles.graphBar,
-                      {
-                        height: barHeight,
-                        backgroundColor: isHighest ? Palette.accent : Palette.border,
-                      },
-                    ]}
-                  />
-                  <ThemedText type="caption" style={styles.graphLabel}>
-                    {dayLabels[index]}
-                  </ThemedText>
-                </View>
-              );
-            })}
-          </View>
+          <View style={styles.cardDivider} />
+
+          <StatsSummary
+            items={[
+              { label: 'Sessions', value: String(activeStats.sessionCount) },
+              { label: 'Total Volume', value: formatVolume(activeStats.totalVolume), unit: 'kg' },
+              { label: 'Avg Duration', value: activeStats.avgMinutes ? String(activeStats.avgMinutes) : '—', unit: 'min' },
+            ]}
+          />
         </View>
 
-        {/* ── Quick Stats Row ── */}
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <ThemedText type="caption" style={styles.statLabel}>This Week</ThemedText>
-            <ThemedText type="displaySmall" style={styles.statValue}>5</ThemedText>
-            <ThemedText type="caption" style={styles.statUnit}>Sessions</ThemedText>
-          </View>
-          <View style={styles.statCard}>
-            <ThemedText type="caption" style={styles.statLabel}>Total Volume</ThemedText>
-            <ThemedText type="displaySmall" style={styles.statValue}>12.4k</ThemedText>
-            <ThemedText type="caption" style={styles.statUnit}>kg</ThemedText>
-          </View>
-          <View style={styles.statCard}>
-            <ThemedText type="caption" style={styles.statLabel}>Avg Duration</ThemedText>
-            <ThemedText type="displaySmall" style={styles.statValue}>58</ThemedText>
-            <ThemedText type="caption" style={styles.statUnit}>min</ThemedText>
-          </View>
-        </View>
-
-        {/* ── My Templates Section ── */}
+        {/* ── My Workout Plans Section ── */}
         <View style={styles.sectionHeader}>
-          <ThemedText type="headingMedium">My Templates</ThemedText>
+          <ThemedText type="headingMedium">My Workout Plans</ThemedText>
           <View style={styles.sectionActions}>
             <TouchableOpacity 
               onPress={() => router.push('/workout/new-template')}
@@ -166,7 +266,7 @@ export default function HomeScreen() {
               {/* Top row: icon + more button */}
               <View style={styles.cardTopRow}>
                 <View style={styles.iconCircle}>
-                  <IconSymbol name="fitness.center" size={20} color={Palette.accent} />
+                  <IconSymbol name="dumbbell.fill" size={20} color={Palette.accent} />
                 </View>
                 <TouchableOpacity 
                   style={styles.moreActionButton}
@@ -262,6 +362,9 @@ const styles = StyleSheet.create({
 
   // ── Header ──
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: Spacing.xl,
   },
   greeting: {
@@ -272,72 +375,20 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
   },
 
-  // ── Analytics Card ──
-  analyticsCard: {
+  // ── Dashboard Card (chart/calendar + stats) ──
+  dashboardCard: {
     backgroundColor: Palette.surface,
-    padding: Spacing.xl,
-    borderRadius: Radius.lg,
-    marginBottom: Spacing.lg,
-    ...Shadows.card,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.xl,
-  },
-  trendBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Palette.accentLight,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
-    borderRadius: Radius.full,
-  },
-  graphContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    height: 120,
-    paddingTop: Spacing.md,
-  },
-  graphBarContainer: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  graphBar: {
-    width: 10,
-    borderRadius: 5,
-    marginBottom: Spacing.sm,
-  },
-  graphLabel: {
-    color: Palette.textSecondary,
-  },
-
-  // ── Stats Row ──
-  statsRow: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-    marginBottom: Spacing.xxl,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: Palette.surface,
-    borderRadius: Radius.lg,
     padding: Spacing.lg,
-    alignItems: 'center',
+    paddingBottom:Spacing.md,
+    borderRadius: Radius.lg,
+    marginBottom: Spacing.xxl,
     ...Shadows.card,
   },
-  statLabel: {
-    color: Palette.textSecondary,
-    marginBottom: Spacing.xs,
-  },
-  statValue: {
-    color: Palette.textPrimary,
-  },
-  statUnit: {
-    color: Palette.textSecondary,
-    marginTop: 2,
+  cardDivider: {
+    height: 1,
+    backgroundColor: Palette.border,
+    marginHorizontal: Spacing.sm,
+    marginVertical: Spacing.lg,
   },
 
   // ── Section Header ──

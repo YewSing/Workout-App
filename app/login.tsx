@@ -1,16 +1,15 @@
 import React, { useState } from 'react';
-import { StyleSheet, TextInput, TouchableOpacity, View, KeyboardAvoidingView, Platform } from 'react-native';
+import { StyleSheet, TextInput, TouchableOpacity, View, KeyboardAvoidingView, Platform , Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Alert } from 'react-native';
 import { login } from '@/api/auth';
 import { Palette, Spacing, Radius, Shadows, Typography } from '@/constants/theme';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [, setLoading] = useState(false);
   const router = useRouter();
 
   const handleLogin = async () => {
@@ -21,10 +20,10 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      const data = await login(email, password);
+      await login(email, password);
       router.replace('/(tabs)/home');
     } catch (error: any) {
-      const message = error.response?.data?.message || "Login failed. Please try again.";
+      const message = error.message || "Login failed. Please try again.";
       Alert.alert("Login Error", message);
     } finally {
       setLoading(false);
@@ -74,7 +73,7 @@ export default function LoginScreen() {
         </View>
 
         <View style={styles.footer}>
-          <ThemedText type="bodyDefault">Don't have an account? </ThemedText>
+          <ThemedText type="bodyDefault">Don&apos;t have an account? </ThemedText>
           <TouchableOpacity onPress={() => router.push('/register')}>
             <ThemedText type="link">Sign Up</ThemedText>
           </TouchableOpacity>

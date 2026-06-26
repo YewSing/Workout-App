@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, TextInput, FlatList, TouchableOpacity, Alert, View, ActivityIndicator, ScrollView, Modal, Platform, UIManager, Animated } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { StyleSheet, TextInput, TouchableOpacity, Alert, View, ActivityIndicator, ScrollView, Modal, Platform, UIManager, LayoutAnimation, FlatList } from 'react-native';
+import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { fetchWorkoutById, updateWorkoutTemplate, fetchAllExercises, deleteWorkoutTemplate } from '@/api/workout';
+import { fetchWorkoutById, updateWorkoutTemplate, fetchAllExercises, deleteWorkoutTemplate, updateVariation, deleteVariation } from '@/api/workout';
 import { Ionicons } from '@expo/vector-icons';
 import { FilterChip } from '@/components/ui/FilterChip';
 import { Palette, Spacing, Radius, Shadows, Typography } from '@/constants/theme';
@@ -13,6 +14,16 @@ if (Platform.OS === 'android') {
     UIManager.setLayoutAnimationEnabledExperimental(true);
   }
 }
+
+const muscleGroupsMapping: Record<string, string[]> = {
+  'Chest': ['chest', 'upper chest', 'lower chest', 'mid chest', 'pectorals', 'pecs'],
+  'Back': ['back', 'lats', 'upper back', 'lower back', 'rhomboids', 'traps'],
+  'Shoulder': ['shoulder', 'front delt', 'side delt', 'rear delt', 'delts', 'deltoids'],
+  'Legs': ['legs', 'quads', 'hamstrings', 'hamstring', 'calf', 'calves', 'glutes'],
+  'Biceps': ['biceps', 'bicep'],
+  'Triceps': ['triceps', 'tricep'],
+  'Core': ['core', 'abs', 'abdominals', 'obliques'],
+};
 
 interface Exercise {
   id: number;
@@ -27,6 +38,32 @@ interface SessionSummary {
   volume: number;
 }
 
+interface Variation {
+  id: number;
+  name: string;
+  exercises: Exercise[];
+  sessions: SessionSummary[];
+}
+
+// EF reference-handler shapes sometimes wrap arrays in { $values: [...] }.
+const unwrap = (v: any): any[] => (v && v.$values ? v.$values : Array.isArray(v) ? v : []);
+
+const formatDuration = (duration: string): string => {
+  if (!duration) return '';
+  const parts = duration.split(':');
+  const h = parseInt(parts[0] ?? '0', 10);
+  const m = parseInt(parts[1] ?? '0', 10);
+  if (h > 0 && m > 0) return `${h} h ${m} min`;
+  if (h > 0) return `${h} h`;
+  return `${m} min`;
+};
+
+const durationToMinutes = (duration: string): number => {
+  if (!duration) return 0;
+  const [h, m, s] = duration.split(':').map(p => parseInt(p, 10) || 0);
+  return h * 60 + m + s / 60;
+};
+
 export default function WorkoutDetail() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
@@ -35,110 +72,180 @@ export default function WorkoutDetail() {
   const [description, setDescription] = useState("");
   const [availableExercises, setAvailableExercises] = useState<Exercise[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
+  const [variations, setVariations] = useState<Variation[]>([]);
+  const [selectedVariationId, setSelectedVariationId] = useState<number | null>(null);
+  const [chartMetric, setChartMetric] = useState<'volume' | 'duration'>('volume');
+  const [orderedExercises, setOrderedExercises] = useState<Exercise[]>([]);
+
+  // Edit-mode working state (edits the currently selected gym + plan info)
+  const [gymName, setGymName] = useState("");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedMuscle, setSelectedMuscle] = useState<string | null>(null);
-  
+
   const [isEditing, setIsEditing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [exercisesExpanded, setExercisesExpanded] = useState(false);
-  const [expandAnim] = useState(new Animated.Value(0));
 
-  const muscleGroupsMapping: Record<string, string[]> = {
-    'Chest': ['chest', 'upper chest', 'lower chest', 'mid chest', 'pectorals', 'pecs'],
-    'Back': ['back', 'lats', 'upper back', 'lower back', 'rhomboids', 'traps'],
-    'Shoulder': ['shoulder', 'front delt', 'side delt', 'rear delt', 'delts', 'deltoids'],
-    'Legs': ['legs', 'quads', 'hamstrings', 'hamstring', 'calf', 'calves', 'glutes']
-  };
+  const [showAddExModal, setShowAddExModal] = useState(false);
+  const [addExSearch, setAddExSearch] = useState('');
+  const [addExMuscle, setAddExMuscle] = useState<string | null>(null);
 
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const exData = await fetchAllExercises();
-        if (Array.isArray(exData)) {
-          setAvailableExercises(exData);
-        } else if (exData && exData.$values) {
-          setAvailableExercises(exData.$values);
-        }
+  const loadData = useCallback(async () => {
+    try {
+      const exData = await fetchAllExercises();
+      setAvailableExercises(unwrap(exData));
 
-        if (id) {
-            const workoutData = await fetchWorkoutById(id as string);
-            setName(workoutData.name || "");
-            setDescription(workoutData.description || "");
-            
-            if (workoutData.exercises && workoutData.exercises.$values) {
-              setSelectedIds(workoutData.exercises.$values.map((ex: any) => ex.id));
-            } else if (Array.isArray(workoutData.exercises)) {
-              setSelectedIds(workoutData.exercises.map((ex: any) => ex.id));
-            }
+      if (id) {
+        const workoutData = await fetchWorkoutById(id as string);
+        setName(workoutData.name || "");
+        setDescription(workoutData.description || "");
 
-            if (workoutData.sessions && workoutData.sessions.$values) {
-              setSessions(workoutData.sessions.$values);
-            } else if (Array.isArray(workoutData.sessions)) {
-              setSessions(workoutData.sessions);
-            }
-        }
-      } catch (err) {
-        console.log("Error Loading", err);
-        Alert.alert("Error", "Could not load workout details.");
-      } finally {
-        setLoading(false);
+        const vars: Variation[] = unwrap(workoutData.variations).map((v: any) => ({
+          id: v.id,
+          name: v.name,
+          exercises: unwrap(v.exercises),
+          sessions: unwrap(v.sessions),
+        }));
+        setVariations(vars);
+
+        // Keep the current selection if it still exists, else default to the first gym.
+        setSelectedVariationId(prev =>
+          prev && vars.some(v => v.id === prev) ? prev : (vars[0]?.id ?? null)
+        );
       }
-    };
-    loadData();
+    } catch (err) {
+      console.log("Error Loading", err);
+      Alert.alert("Error", "Could not load workout details.");
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
 
+  // Reload every time the screen regains focus so newly added gyms and finished
+  // sessions show up immediately.
+  useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
+
+  const currentVariation = variations.find(v => v.id === selectedVariationId) || null;
+  const sessions = currentVariation?.sessions ?? [];
+
+  // Local copy of the gym's exercises that the drag-to-reorder list edits directly,
+  // re-synced whenever the gym switches or fresh data loads.
+  useEffect(() => {
+    setOrderedExercises(currentVariation?.exercises ?? []);
+  }, [currentVariation]);
+
+  const handleExerciseDragEnd = useCallback(({ data }: { data: Exercise[] }) => {
+    setOrderedExercises(data);
+    if (!currentVariation || !selectedVariationId) return;
+    updateVariation(selectedVariationId, currentVariation.name, data.map(e => e.id)).catch(() => {
+      Alert.alert('Error', 'Could not save the new exercise order.');
+      setOrderedExercises(currentVariation.exercises);
+    });
+  }, [currentVariation, selectedVariationId]);
+
+  const handleRemoveExercise = (exerciseId: number, exerciseName: string) => {
+    if (!currentVariation || !selectedVariationId) return;
+    const confirm = () => {
+      const newIds = currentVariation.exercises.filter(e => e.id !== exerciseId).map(e => e.id);
+      updateVariation(selectedVariationId, currentVariation.name, newIds)
+        .then(loadData)
+        .catch(() => Alert.alert('Error', 'Could not remove exercise.'));
+    };
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Remove "${exerciseName}" from this gym?`)) confirm();
+    } else {
+      Alert.alert('Remove Exercise?', `Remove "${exerciseName}" from this gym?`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: confirm },
+      ]);
+    }
+  };
+
   const toggleExercise = (exerciseId: number) => {
-    if (!isEditing) return; 
-    setSelectedIds(prev => 
+    if (!isEditing) return;
+    setSelectedIds(prev =>
       prev.includes(exerciseId) ? prev.filter(i => i !== exerciseId) : [...prev, exerciseId]
     );
   };
 
+  const startEditing = () => {
+    if (!currentVariation) return;
+    setGymName(currentVariation.name);
+    setSelectedIds(currentVariation.exercises.map(e => e.id));
+    setSearchQuery("");
+    setSelectedMuscle(null);
+    setIsEditing(true);
+  };
+
   const handleUpdate = async () => {
-    if (!name || selectedIds.length === 0) {
-      Alert.alert("Error", "Please provide a name and select at least one exercise.");
+    if (!name) {
+      Alert.alert("Error", "Please provide a plan name.");
       return;
     }
-    
+    if (selectedIds.length === 0) {
+      Alert.alert("Error", "Select at least one exercise for this gym.");
+      return;
+    }
     try {
       setLoading(true);
       await updateWorkoutTemplate(id as string, name, description, selectedIds);
-      Alert.alert("Success", "Workout template updated!");
-      setIsEditing(false); 
-    } catch (e) {
-      Alert.alert("Error", "Could not save template changes.");
+      if (selectedVariationId) {
+        await updateVariation(selectedVariationId, gymName.trim() || "Gym", selectedIds);
+      }
+      setIsEditing(false);
+      await loadData();
+    } catch {
+      Alert.alert("Error", "Could not save changes.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDelete = async () => {
-    Alert.alert(
-      "Delete Template",
-      "Are you sure you want to delete this template?",
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Delete", 
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await deleteWorkoutTemplate(id as string);
-              setModalVisible(false);
-              router.replace('/(tabs)/home');
-            } catch (err) {
-              Alert.alert("Error", "Could not delete template");
-            }
+  const handleDeletePlan = async () => {
+    Alert.alert("Delete Plan", "Are you sure you want to delete this whole plan and all its gyms?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete", style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteWorkoutTemplate(id as string);
+            setModalVisible(false);
+            router.replace('/(tabs)/home');
+          } catch {
+            Alert.alert("Error", "Could not delete plan");
           }
         }
-      ]
-    );
+      }
+    ]);
   };
 
-  const displayExercises = isEditing 
+  const handleDeleteGym = () => {
+    if (!currentVariation) return;
+    if (variations.length <= 1) {
+      Alert.alert("Can't remove", "A plan needs at least one gym. Delete the whole plan instead.");
+      return;
+    }
+    Alert.alert("Delete Gym", `Remove "${currentVariation.name}" and its history from this plan?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete", style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteVariation(currentVariation.id);
+            setModalVisible(false);
+            setSelectedVariationId(null); // loadData will pick the first remaining gym
+            await loadData();
+          } catch (err: any) {
+            Alert.alert("Error", err?.message || "Could not delete gym");
+          }
+        }
+      }
+    ]);
+  };
+
+  const displayExercises = isEditing
     ? availableExercises.filter(exercise => {
         const matchesSearch = (exercise.name || "").toLowerCase().includes(searchQuery.toLowerCase());
         let matchesMuscle = true;
@@ -149,176 +256,122 @@ export default function WorkoutDetail() {
         }
         return matchesSearch && matchesMuscle;
       })
-    : availableExercises.filter(exercise => selectedIds.includes(exercise.id)); 
+    : (currentVariation?.exercises ?? []);
+
+  const quickAddExercises = useMemo(() => {
+    const currentIds = new Set(currentVariation?.exercises.map(e => e.id) ?? []);
+    return availableExercises
+      .filter(e => !currentIds.has(e.id))
+      .filter(e => (e.name || '').toLowerCase().includes(addExSearch.toLowerCase()))
+      .filter(e => {
+        if (!addExMuscle) return true;
+        const m = (e.muscleGroup || '').toLowerCase();
+        const targets = muscleGroupsMapping[addExMuscle] || [addExMuscle.toLowerCase()];
+        return targets.some(t => m.includes(t)) || m === addExMuscle.toLowerCase();
+      })
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }, [availableExercises, currentVariation, addExSearch, addExMuscle]);
+
+  const handleQuickAddExercise = async (exercise: Exercise) => {
+    if (!currentVariation || !selectedVariationId) return;
+    try {
+      const newIds = [...currentVariation.exercises.map(e => e.id), exercise.id];
+      await updateVariation(selectedVariationId, currentVariation.name, newIds);
+      setShowAddExModal(false);
+      setAddExSearch('');
+      setAddExMuscle(null);
+      await loadData();
+    } catch {
+      Alert.alert("Error", "Could not add exercise. Please try again.");
+    }
+  };
 
   return (
     <ThemedView style={styles.container}>
       {loading ? (
-         <View style={{flex: 1, justifyContent: 'center'}}><ActivityIndicator size="large" color={Palette.accent} /></View>
-      ) : (
+        <View style={{ flex: 1, justifyContent: 'center' }}><ActivityIndicator size="large" color={Palette.accent} /></View>
+      ) : isEditing ? (
         <View style={{ flex: 1 }}>
           <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-            {/* Title Row: back button + title + 3-dots — all scrollable */}
+            {/* Title Row */}
             <View style={styles.titleRow}>
-              <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-                <Ionicons name="chevron-back" size={24} color={Palette.textPrimary} />
+              <TouchableOpacity onPress={() => router.back()} style={[styles.backButton, { width: 32, height: 32 }]}>
+                <Ionicons name="chevron-back" size={20} color={Palette.textPrimary} />
               </TouchableOpacity>
-              <ThemedText type="displayLarge" style={styles.title} numberOfLines={1}>
-                {isEditing ? "Edit Template" : (name || "Loading...")}
+              <ThemedText type="headingMedium" style={styles.title} numberOfLines={1}>
+                Edit Plan
               </ThemedText>
-              {!isEditing ? (
-                <TouchableOpacity 
-                  style={styles.moreButton} 
-                  onPress={() => setModalVisible(true)}
-                  hitSlop={{top: 15, bottom: 15, left: 15, right: 15}}
-                >
-                  <Ionicons name="ellipsis-horizontal" size={24} color={Palette.textPrimary} />
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity onPress={() => setIsEditing(false)} style={styles.cancelButton}>
-                  <ThemedText type="bodyDefault" style={{ color: Palette.accent, fontWeight: '600' }}>Cancel</ThemedText>
+              <TouchableOpacity onPress={() => setIsEditing(false)} style={styles.cancelButton}>
+                <ThemedText type="bodyDefault" style={{ color: Palette.accent, fontWeight: '600' }}>Cancel</ThemedText>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.editSection}>
+              <ThemedText type="bodySmall" style={styles.inputLabel}>Plan Name</ThemedText>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g., Chest Day"
+                placeholderTextColor={Palette.textSecondary}
+                value={name}
+                onChangeText={setName}
+              />
+              <ThemedText type="bodySmall" style={[styles.inputLabel, { marginTop: Spacing.md }]}>Description (Optional)</ThemedText>
+              <TextInput
+                style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
+                placeholder="Add focus or notes..."
+                placeholderTextColor={Palette.textSecondary}
+                value={description}
+                onChangeText={setDescription}
+                multiline
+              />
+              <ThemedText type="bodySmall" style={[styles.inputLabel, { marginTop: Spacing.md }]}>Gym</ThemedText>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g., Apartment Gym"
+                placeholderTextColor={Palette.textSecondary}
+                value={gymName}
+                onChangeText={setGymName}
+              />
+            </View>
+
+            <ThemedText type="headingMedium" style={styles.editExercisesHeader}>
+              Exercises at this gym ({selectedIds.length})
+            </ThemedText>
+
+            <View style={styles.searchContainer}>
+              <Ionicons name="search" size={18} color={Palette.textSecondary} style={{ marginLeft: Spacing.lg }} />
+              <TextInput
+                style={styles.searchInputFlex}
+                placeholder="Search exercises..."
+                placeholderTextColor={Palette.textSecondary}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery("")} style={styles.clearButton}>
+                  <Ionicons name="close-circle" size={18} color={Palette.textSecondary} />
                 </TouchableOpacity>
               )}
             </View>
-            
-            {isEditing ? (
-                <View style={styles.editSection}>
-                  <ThemedText type="bodySmall" style={styles.inputLabel}>Template Name</ThemedText>
-                  <TextInput 
-                      style={styles.input} 
-                      placeholder="e.g., Push Day" 
-                      placeholderTextColor={Palette.textSecondary}
-                      value={name} 
-                      onChangeText={setName} 
+
+            <View style={styles.filterContainer}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <FilterChip label="All" selected={selectedMuscle === null} onPress={() => setSelectedMuscle(null)} />
+                {['Chest', 'Back', 'Shoulder', 'Legs', 'Biceps', 'Triceps', 'Core'].map(muscle => (
+                  <FilterChip
+                    key={muscle}
+                    label={muscle}
+                    selected={selectedMuscle === muscle}
+                    onPress={() => setSelectedMuscle(muscle === selectedMuscle ? null : muscle)}
                   />
-                  <ThemedText type="bodySmall" style={[styles.inputLabel, { marginTop: Spacing.md }]}>Description (Optional)</ThemedText>
-                  <TextInput 
-                      style={[styles.input, { height: 80, textAlignVertical: 'top' }]} 
-                      placeholder="Add focus or notes..." 
-                      placeholderTextColor={Palette.textSecondary}
-                      value={description} 
-                      onChangeText={setDescription}
-                      multiline
-                  />
-                </View>
-            ) : (
-                <View>
-                  {/* Volume History Graph */}
-                  <View style={styles.graphSection}>
-                    <ThemedText type="bodyLarge" style={styles.sectionHeaderTitle}>Volume History</ThemedText>
-                    <View style={sessions.length > 0 ? styles.graphContainer : { paddingVertical: Spacing.sm }}>
-                      {sessions.length === 0 ? (
-                        <ThemedText type="bodySmall" style={styles.emptyText}>No sessions yet.</ThemedText>
-                      ) : (
-                        sessions.slice(0, 7).reverse().map((s, idx) => {
-                          const maxHeight = 80;
-                          const maxVol = Math.max(...sessions.map(s => s.volume)) || 1;
-                          const barHeight = Math.max(10, (s.volume / maxVol) * maxHeight);
-                          const dateObj = new Date(s.dateTime);
-                          const dayLabel = dateObj.toLocaleDateString('en-US', { weekday: 'short' }).charAt(0);
-                          return (
-                            <View key={idx} style={styles.graphBarContainer}>
-                              <View style={[styles.graphBar, { height: barHeight, backgroundColor: Palette.accent }]} />
-                              <ThemedText type="caption" style={styles.graphLabel}>{dayLabel}</ThemedText>
-                            </View>
-                          );
-                        })
-                      )}
-                    </View>
-                  </View>
-                </View>
-            )}
+                ))}
+              </ScrollView>
+            </View>
 
-            {isEditing ? (
-               <ThemedText type="headingMedium" style={styles.editExercisesHeader}>
-                 Select Exercises ({selectedIds.length})
-               </ThemedText>
-            ) : (
-               <TouchableOpacity 
-                  style={styles.expandableHeader}
-                  activeOpacity={0.7}
-                  onPress={() => {
-                      const toValue = exercisesExpanded ? 0 : 1;
-                      setExercisesExpanded(!exercisesExpanded);
-                      Animated.timing(expandAnim, {
-                          toValue,
-                          duration: 300,
-                          useNativeDriver: false,
-                      }).start();
-                  }}
-               >
-                  <ThemedText type="bodyLarge">Exercises ({selectedIds.length})</ThemedText>
-                  <Ionicons name={exercisesExpanded ? "chevron-up" : "chevron-down"} size={20} color={Palette.textSecondary} />
-               </TouchableOpacity>
-            )}
-
-            {isEditing && (
-                <>
-                    <View style={styles.searchContainer}>
-                        <Ionicons name="search" size={18} color={Palette.textSecondary} style={{ marginLeft: Spacing.lg }} />
-                        <TextInput
-                            style={styles.searchInputFlex}
-                            placeholder="Search exercises..."
-                            placeholderTextColor={Palette.textSecondary}
-                            value={searchQuery}
-                            onChangeText={setSearchQuery}
-                        />
-                        {searchQuery.length > 0 && (
-                            <TouchableOpacity onPress={() => setSearchQuery("")} style={styles.clearButton}>
-                                <Ionicons name="close-circle" size={18} color={Palette.textSecondary} />
-                            </TouchableOpacity>
-                        )}
-                    </View>
-
-                    <View style={styles.filterContainer}>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                            <FilterChip
-                              label="All"
-                              selected={selectedMuscle === null}
-                              onPress={() => setSelectedMuscle(null)}
-                            />
-                            {['Chest', 'Back', 'Shoulder', 'Legs'].map(muscle => (
-                                <FilterChip
-                                  key={muscle}
-                                  label={muscle}
-                                  selected={selectedMuscle === muscle}
-                                  onPress={() => setSelectedMuscle(muscle === selectedMuscle ? null : muscle)}
-                                />
-                            ))}
-                        </ScrollView>
-                    </View>
-                </>
-            )}
-
-            {/* Exercises List (View Mode) - collapsed by default */}
-            {!isEditing && (
-               <Animated.View style={{ 
-                 overflow: 'hidden',
-                 maxHeight: expandAnim.interpolate({
-                   inputRange: [0, 1],
-                   outputRange: [0, 2000]
-                 }),
-                 opacity: expandAnim
-               }}>
-                    {displayExercises.map((item) => (
-                      <View key={item.id} style={styles.item}>
-                        <View>
-                          <ThemedText type="bodyLarge">{item.name ?? "Unnamed Exercise"}</ThemedText>
-                          <ThemedText type="caption" style={styles.muscleText}>{item.muscleGroup ?? "Unspecified"}</ThemedText>
-                        </View>
-                      </View>
-                    ))}
-                    {displayExercises.length === 0 && (
-                      <ThemedText type="bodySmall" style={styles.emptyText}>No exercises selected.</ThemedText>
-                    )}
-               </Animated.View>
-            )}
-
-            {/* Exercises List (Edit Mode) */}
-            {isEditing && displayExercises.map((item) => {
+            {displayExercises.map((item) => {
               const isSelected = selectedIds.includes(item.id);
               return (
-                <TouchableOpacity 
+                <TouchableOpacity
                   key={item.id}
                   style={[styles.item, isSelected && styles.selectedItem]}
                   onPress={() => toggleExercise(item.id)}
@@ -340,104 +393,312 @@ export default function WorkoutDetail() {
                 </TouchableOpacity>
               );
             })}
-
-            {/* Session History Section */}
-            {!isEditing && (
-              <View style={styles.historySection}>
-                 <ThemedText type="bodyLarge" style={styles.sectionHeaderTitle}>History</ThemedText>
-                 {sessions.length === 0 ? (
-                   <ThemedText type="bodySmall" style={styles.emptyText}>You haven't completed this workout yet.</ThemedText>
-                 ) : (
-                   sessions.map((session, idx) => (
-                      <View key={idx} style={styles.historyCard}>
-                         <View style={styles.historyCardRow}>
-                            <ThemedText type="bodyLarge">
-                               {new Date(session.dateTime).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
-                            </ThemedText>
-                            <ThemedText type="caption" style={{ color: Palette.textSecondary }}>{session.duration.substring(0, 5)}</ThemedText>
-                         </View>
-                         <View style={styles.historyCardStats}>
-                            <Ionicons name="bar-chart-outline" size={16} color={Palette.accent} />
-                            <ThemedText type="bodySmall" style={{ color: Palette.accent }}>{session.volume} lbs Total</ThemedText>
-                         </View>
-                      </View>
-                   ))
-                 )}
-              </View>
-            )}
           </ScrollView>
 
           {/* Floating Footer Button */}
           <View style={styles.footer}>
-            {isEditing ? (
-              <TouchableOpacity style={styles.saveButton} onPress={handleUpdate} activeOpacity={0.8}>
-                <ThemedText style={styles.saveButtonText}>Save Changes</ThemedText>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity style={styles.startButton} onPress={() => router.push('/session/new' as any)} activeOpacity={0.8}>
-                <ThemedText style={styles.startButtonText}>Start Workout</ThemedText>
-              </TouchableOpacity>
+            <TouchableOpacity style={styles.saveButton} onPress={handleUpdate} activeOpacity={0.8}>
+              <ThemedText style={styles.saveButtonText}>Save Changes</ThemedText>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : (
+        <View style={{ flex: 1 }}>
+          {/* The exercise list itself is the page's scroll container — nesting a
+              draggable list inside a ScrollView made both fight over vertical swipes
+              and froze scrolling. Everything else lives in the header/footer. */}
+          <DraggableFlatList
+            data={exercisesExpanded ? orderedExercises : []}
+            keyExtractor={item => String(item.id)}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollContent}
+            onDragEnd={handleExerciseDragEnd}
+            ListHeaderComponent={
+              <>
+                {/* Title Row */}
+                <View style={styles.titleRow}>
+                  <TouchableOpacity onPress={() => router.back()} style={[styles.backButton, { width: 32, height: 32 }]}>
+                    <Ionicons name="chevron-back" size={20} color={Palette.textPrimary} />
+                  </TouchableOpacity>
+                  <ThemedText type="headingMedium" style={styles.title} numberOfLines={1}>
+                    {name || "Loading..."}
+                  </ThemedText>
+                  <TouchableOpacity
+                    style={styles.moreButton}
+                    onPress={() => setModalVisible(true)}
+                    hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                  >
+                    <Ionicons name="ellipsis-horizontal" size={24} color={Palette.textPrimary} />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Training Volume Graph (for the selected gym) */}
+                <View style={styles.graphSection}>
+                  <ThemedText type="bodyLarge" style={styles.sectionHeaderTitle}>Training Volume</ThemedText>
+                  <View style={styles.graphFilterRow}>
+                    <FilterChip label="Volume" selected={chartMetric === 'volume'} onPress={() => setChartMetric('volume')} />
+                    <FilterChip label="Duration" selected={chartMetric === 'duration'} onPress={() => setChartMetric('duration')} />
+                  </View>
+                  <View style={sessions.length > 0 ? styles.graphContainer : { paddingVertical: Spacing.sm }}>
+                    {sessions.length === 0 ? (
+                      <ThemedText type="bodySmall" style={styles.emptyText}>No sessions at this gym yet.</ThemedText>
+                    ) : (
+                      sessions.slice(0, 7).reverse().map((s, idx) => {
+                        const maxHeight = 80;
+                        const metricOf = (x: SessionSummary) => chartMetric === 'volume' ? x.volume : durationToMinutes(x.duration);
+                        const maxMetric = Math.max(...sessions.map(metricOf)) || 1;
+                        const barHeight = Math.max(10, (metricOf(s) / maxMetric) * maxHeight);
+                        const dateObj = new Date(s.dateTime);
+                        const dayLabel = dateObj.toLocaleDateString('en-US', { weekday: 'short' }).charAt(0);
+                        return (
+                          <View key={idx} style={styles.graphBarContainer}>
+                            <View style={[styles.graphBar, { height: barHeight, backgroundColor: Palette.accent }]} />
+                            <ThemedText type="caption" style={styles.graphLabel}>{dayLabel}</ThemedText>
+                          </View>
+                        );
+                      })
+                    )}
+                  </View>
+                </View>
+
+                {/* ── Gym selector ── */}
+                <ThemedText type="bodySmall" style={styles.gymRowLabel}>GYM</ThemedText>
+                <View style={styles.gymRow}>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    {variations.map(v => (
+                      <FilterChip
+                        key={v.id}
+                        label={v.name}
+                        selected={v.id === selectedVariationId}
+                        onPress={() => setSelectedVariationId(v.id)}
+                      />
+                    ))}
+                    <TouchableOpacity
+                      style={styles.addGymChip}
+                      activeOpacity={0.7}
+                      onPress={() => router.push({ pathname: '/workout/new-template', params: { workoutId: id as string } } as any)}
+                    >
+                      <Ionicons name="add" size={16} color={Palette.accent} />
+                      <ThemedText type="bodySmall" style={{ color: Palette.accent }}>Add Gym</ThemedText>
+                    </TouchableOpacity>
+                  </ScrollView>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.expandableHeader}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setExercisesExpanded(!exercisesExpanded);
+                  }}
+                >
+                  <ThemedText type="bodyLarge">Exercises ({orderedExercises.length})</ThemedText>
+                  <Ionicons name={exercisesExpanded ? "chevron-up" : "chevron-down"} size={20} color={Palette.textSecondary} />
+                </TouchableOpacity>
+              </>
+            }
+            ListEmptyComponent={exercisesExpanded ? (
+              <ThemedText type="bodySmall" style={styles.emptyText}>No exercises for this gym.</ThemedText>
+            ) : null}
+            renderItem={({ item, drag, isActive }) => (
+              <ScaleDecorator activeScale={0.97}>
+                <View style={[styles.item, isActive && styles.itemDragging]}>
+                  <View style={{ flex: 1 }}>
+                    <ThemedText type="bodyLarge">{item.name ?? 'Unnamed Exercise'}</ThemedText>
+                    <ThemedText type="caption" style={styles.muscleText}>{item.muscleGroup ?? 'Unspecified'}</ThemedText>
+                  </View>
+                  <TouchableOpacity onLongPress={drag} delayLongPress={1000} style={styles.dragHandle} activeOpacity={0.6}>
+                    <Ionicons name="reorder-three-outline" size={22} color={Palette.textSecondary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => handleRemoveExercise(item.id, item.name)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={styles.removeExBtn}
+                  >
+                    <Ionicons name="close" size={18} color={Palette.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+              </ScaleDecorator>
             )}
+            ListFooterComponent={
+              <>
+                {exercisesExpanded && (
+                  <TouchableOpacity
+                    style={styles.addExerciseBtn}
+                    onPress={() => setShowAddExModal(true)}
+                    activeOpacity={0.75}
+                  >
+                    <Ionicons name="add-circle-outline" size={18} color={Palette.accent} />
+                    <ThemedText style={styles.addExerciseBtnText}>Add Exercise</ThemedText>
+                  </TouchableOpacity>
+                )}
+
+                {/* Session History Section (for the selected gym) */}
+                <View style={styles.historySection}>
+                  <View style={styles.historyHeader}>
+                    <ThemedText type="bodyLarge">History ({sessions.length})</ThemedText>
+                    {sessions.length > 0 && (
+                      <TouchableOpacity onPress={() => router.push(`/workout/${id}/sessions` as any)}>
+                        <ThemedText type="bodySmall" style={{ color: Palette.accent }}>View All</ThemedText>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  {sessions.length === 0 ? (
+                    <ThemedText type="bodySmall" style={styles.emptyText}>No sessions at this gym yet.</ThemedText>
+                  ) : (
+                    sessions.slice(0, 5).map((session, idx) => (
+                      <TouchableOpacity
+                        key={idx}
+                        style={styles.historyCard}
+                        activeOpacity={0.8}
+                        onPress={() => router.push(`/workout/${id}/session/${session.sessionId}` as any)}
+                      >
+                        <View style={styles.historyCardRow}>
+                          <ThemedText type="bodyLarge">
+                            {new Date(session.dateTime).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                          </ThemedText>
+                          <ThemedText type="caption" style={{ color: Palette.textSecondary }}>{formatDuration(session.duration)}</ThemedText>
+                        </View>
+                        <View style={styles.historyCardStats}>
+                          <Ionicons name="bar-chart-outline" size={16} color={Palette.accent} />
+                          <ThemedText type="bodySmall" style={{ color: Palette.accent }}>{session.volume} kg Total</ThemedText>
+                        </View>
+                      </TouchableOpacity>
+                    ))
+                  )}
+                </View>
+              </>
+            }
+          />
+
+          {/* Floating Footer Button */}
+          <View style={styles.footer}>
+            <TouchableOpacity
+              style={[styles.startButton, !currentVariation && { opacity: 0.5 }]}
+              disabled={!currentVariation}
+              onPress={() => router.push({
+                pathname: '/workout/create',
+                params: {
+                  variationId: String(selectedVariationId),
+                  planName: name,
+                  gymName: currentVariation?.name ?? "",
+                  exercisesJson: JSON.stringify(orderedExercises),
+                }
+              } as any)}
+              activeOpacity={0.8}
+            >
+              <ThemedText style={styles.startButtonText}>
+                Start Workout{currentVariation ? ` · ${currentVariation.name}` : ""}
+              </ThemedText>
+            </TouchableOpacity>
           </View>
         </View>
       )}
 
+      {/* Quick Add Exercise Modal */}
+      <Modal visible={showAddExModal} animationType="slide" transparent onRequestClose={() => { setShowAddExModal(false); setAddExSearch(''); setAddExMuscle(null); }}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => { setShowAddExModal(false); setAddExSearch(''); setAddExMuscle(null); }}>
+          <TouchableOpacity activeOpacity={1} onPress={() => {}} style={styles.quickAddSheet}>
+            <View style={styles.quickAddHeader}>
+              <ThemedText type="headingMedium">Add Exercise</ThemedText>
+              <TouchableOpacity onPress={() => { setShowAddExModal(false); setAddExSearch(''); setAddExMuscle(null); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close" size={22} color={Palette.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.quickAddSearch}>
+              <Ionicons name="search" size={16} color={Palette.textSecondary} />
+              <TextInput
+                style={styles.quickAddSearchInput}
+                placeholder="Search exercises..."
+                placeholderTextColor={Palette.textSecondary}
+                value={addExSearch}
+                onChangeText={setAddExSearch}
+                autoFocus
+              />
+              {addExSearch.length > 0 && (
+                <TouchableOpacity onPress={() => setAddExSearch('')}>
+                  <Ionicons name="close-circle" size={16} color={Palette.textSecondary} />
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={styles.quickAddFilterRow}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <FilterChip label="All" selected={addExMuscle === null} onPress={() => setAddExMuscle(null)} />
+                {['Chest', 'Back', 'Shoulder', 'Legs', 'Biceps', 'Triceps', 'Core'].map(muscle => (
+                  <FilterChip
+                    key={muscle}
+                    label={muscle}
+                    selected={addExMuscle === muscle}
+                    onPress={() => setAddExMuscle(muscle === addExMuscle ? null : muscle)}
+                  />
+                ))}
+              </ScrollView>
+            </View>
+            <View style={{ flex: 1 }}>
+              <FlatList
+                data={quickAddExercises}
+                keyExtractor={item => String(item.id)}
+                renderItem={({ item }) => (
+                  <TouchableOpacity style={styles.quickAddItem} onPress={() => handleQuickAddExercise(item)} activeOpacity={0.7}>
+                    <View>
+                      <ThemedText type="bodyLarge">{item.name}</ThemedText>
+                      <ThemedText type="caption" style={{ color: Palette.textSecondary }}>{item.muscleGroup}</ThemedText>
+                    </View>
+                    <Ionicons name="add-circle" size={22} color={Palette.accent} />
+                  </TouchableOpacity>
+                )}
+                ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: Palette.border }} />}
+                keyboardShouldPersistTaps="handled"
+                ListEmptyComponent={
+                  <ThemedText type="bodySmall" style={styles.emptyText}>No exercises to add.</ThemedText>
+                }
+              />
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
       {/* Action Bottom Sheet Modal */}
-      <Modal
-        visible={modalVisible}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setModalVisible(false)}
-      >
+      <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={() => setModalVisible(false)}>
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setModalVisible(false)}>
           <View style={styles.actionSheetContainer}>
             <View style={styles.dragIndicator} />
-            <ThemedText type="bodySmall" style={styles.sheetTitle}>Template Actions</ThemedText>
+            <ThemedText type="bodySmall" style={styles.sheetTitle}>Plan Actions</ThemedText>
 
-            <TouchableOpacity style={styles.actionItem} onPress={() => {
-                setModalVisible(false);
-                setIsEditing(true);
-            }}>
+            <TouchableOpacity style={styles.actionItem} onPress={() => { setModalVisible(false); startEditing(); }}>
               <View style={styles.actionIconCircle}>
                 <Ionicons name="create-outline" size={20} color={Palette.textPrimary} />
               </View>
-              <ThemedText type="bodyDefault">Edit Template</ThemedText>
+              <ThemedText type="bodyDefault">Edit Plan & Current Gym</ThemedText>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.actionItem} onPress={() => Alert.alert("Coming Soon", "Duplicate template feature")}>
+            <TouchableOpacity style={styles.actionItem} onPress={() => { setModalVisible(false); router.push({ pathname: '/workout/new-template', params: { workoutId: id as string } } as any); }}>
               <View style={styles.actionIconCircle}>
-                <Ionicons name="copy-outline" size={20} color={Palette.textPrimary} />
+                <Ionicons name="add-circle-outline" size={20} color={Palette.textPrimary} />
               </View>
-              <ThemedText type="bodyDefault">Duplicate Template</ThemedText>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.actionItem} onPress={() => Alert.alert("Coming Soon", "Pin to Top feature")}>
-              <View style={styles.actionIconCircle}>
-                <Ionicons name="star-outline" size={20} color={Palette.textPrimary} />
-              </View>
-              <ThemedText type="bodyDefault">Pin to Top</ThemedText>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.actionItem} onPress={() => Alert.alert("Coming Soon", "Share feature")}>
-              <View style={styles.actionIconCircle}>
-                <Ionicons name="share-outline" size={20} color={Palette.textPrimary} />
-              </View>
-              <ThemedText type="bodyDefault">Share Template</ThemedText>
+              <ThemedText type="bodyDefault">Add Another Gym</ThemedText>
             </TouchableOpacity>
 
             <View style={styles.divider} />
 
-            <TouchableOpacity style={styles.actionItem} onPress={handleDelete}>
+            <TouchableOpacity style={styles.actionItem} onPress={() => { setModalVisible(false); handleDeleteGym(); }}>
+              <View style={[styles.actionIconCircle, { backgroundColor: Palette.dangerLight }]}>
+                <Ionicons name="remove-circle-outline" size={20} color={Palette.danger} />
+              </View>
+              <ThemedText type="bodyDefault" style={{ color: Palette.danger }}>
+                Delete Gym{currentVariation ? ` (${currentVariation.name})` : ""}
+              </ThemedText>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionItem} onPress={handleDeletePlan}>
               <View style={[styles.actionIconCircle, { backgroundColor: Palette.dangerLight }]}>
                 <Ionicons name="trash-outline" size={20} color={Palette.danger} />
               </View>
-              <ThemedText type="bodyDefault" style={{ color: Palette.danger }}>Delete Template</ThemedText>
+              <ThemedText type="bodyDefault" style={{ color: Palette.danger }}>Delete Whole Plan</ThemedText>
             </TouchableOpacity>
-            
           </View>
         </TouchableOpacity>
       </Modal>
-
     </ThemedView>
   );
 }
@@ -531,6 +792,30 @@ const styles = StyleSheet.create({
   filterContainer: {
     marginBottom: Spacing.lg,
   },
+  gymRowLabel: {
+    color: Palette.textSecondary,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.sm,
+    marginLeft: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    fontSize: 11,
+  },
+  gymRow: {
+    marginBottom: Spacing.sm,
+  },
+  addGymChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.full,
+    backgroundColor: Palette.accentLight,
+    borderWidth: 1.5,
+    borderColor: Palette.accent,
+    borderStyle: 'dashed',
+  },
   item: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -542,9 +827,9 @@ const styles = StyleSheet.create({
     ...Shadows.card,
     ...Platform.select({
       android: {
-        elevation: 0, // Disable elevation to prevent "gray line" clipping artifacts during animation
+        elevation: 0,
         borderWidth: 1,
-        borderColor: Palette.border, // Use a subtle border instead for definition
+        borderColor: Palette.border,
       },
       default: {
         borderWidth: 0,
@@ -555,7 +840,11 @@ const styles = StyleSheet.create({
     backgroundColor: Palette.accent,
     borderWidth: 2,
     borderColor: Palette.accent,
-    padding: Spacing.lg - 2, // Compensate for 2px border to prevent jump
+    padding: Spacing.lg - 2,
+  },
+  itemDragging: {
+    backgroundColor: Palette.surfaceAlt,
+    ...Shadows.button,
   },
   muscleText: {
     color: Palette.textSecondary,
@@ -608,35 +897,35 @@ const styles = StyleSheet.create({
     fontFamily: Typography.bodyLarge.fontFamily,
   },
   modalOverlay: {
-    flex: 1, 
-    backgroundColor: Palette.overlay, 
+    flex: 1,
+    backgroundColor: Palette.overlay,
     justifyContent: 'flex-end',
   },
   actionSheetContainer: {
-    backgroundColor: Palette.surface, 
-    borderTopLeftRadius: Radius.xl, 
-    borderTopRightRadius: Radius.xl, 
-    padding: Spacing.xl, 
+    backgroundColor: Palette.surface,
+    borderTopLeftRadius: Radius.xl,
+    borderTopRightRadius: Radius.xl,
+    padding: Spacing.xl,
     paddingBottom: 40,
   },
   dragIndicator: {
-    width: 40, 
-    height: 5, 
-    backgroundColor: Palette.border, 
-    borderRadius: 3, 
-    alignSelf: 'center', 
+    width: 40,
+    height: 5,
+    backgroundColor: Palette.border,
+    borderRadius: 3,
+    alignSelf: 'center',
     marginBottom: Spacing.xl,
   },
   sheetTitle: {
-    color: Palette.textSecondary, 
+    color: Palette.textSecondary,
     marginBottom: Spacing.lg,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   actionItem: {
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    paddingVertical: Spacing.md, 
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.md,
     gap: Spacing.md,
   },
   actionIconCircle: {
@@ -648,8 +937,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   divider: {
-    height: 1, 
-    backgroundColor: Palette.border, 
+    height: 1,
+    backgroundColor: Palette.border,
     marginVertical: Spacing.sm,
   },
   graphSection: {
@@ -662,6 +951,10 @@ const styles = StyleSheet.create({
   sectionHeaderTitle: {
     marginBottom: Spacing.lg,
     color: Palette.textPrimary,
+  },
+  graphFilterRow: {
+    flexDirection: 'row',
+    marginBottom: Spacing.lg,
   },
   graphContainer: {
     flexDirection: 'row',
@@ -691,9 +984,94 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Palette.border,
   },
+  dragHandle: {
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: Spacing.xs,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  removeExBtn: {
+    padding: Spacing.xs,
+    paddingRight: Spacing.sm,
+  },
+  addExerciseBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+    marginTop: Spacing.sm,
+    borderWidth: 1.5,
+    borderColor: Palette.accent,
+    borderStyle: 'dashed',
+    borderRadius: Radius.md,
+  },
+  addExerciseBtnText: {
+    color: Palette.accent,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  quickAddSheet: {
+    backgroundColor: Palette.background,
+    borderTopLeftRadius: Radius.xl,
+    borderTopRightRadius: Radius.xl,
+    height: '80%',
+    paddingBottom: 40,
+  },
+  quickAddHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.xl,
+    paddingBottom: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Palette.border,
+  },
+  quickAddSearch: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    margin: Spacing.lg,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    backgroundColor: Palette.surface,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Palette.border,
+  },
+  quickAddSearchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: Palette.textPrimary,
+    padding: 0,
+  },
+  quickAddFilterRow: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.xs,
+    marginBottom: Spacing.sm,
+  },
+  quickAddItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+  },
+  emptyText: {
+    textAlign: 'center',
+    color: Palette.textSecondary,
+    padding: Spacing.xl,
+  },
   historySection: {
     marginTop: Spacing.xl,
     paddingBottom: Spacing.xxl + Spacing.sm,
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
   },
   historyCard: {
     backgroundColor: Palette.surface,
@@ -711,11 +1089,5 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-  },
-  emptyText: {
-    textAlign: 'center',
-    color: Palette.textSecondary,
-    marginTop: Spacing.sm,
-    paddingBottom: Spacing.sm,
   },
 });

@@ -20,6 +20,8 @@ export const Palette = {
   textSecondary: '#999999',    // Labels, captions, placeholders
   textOnAccent: '#FFFFFF',     // Text on accent-colored surfaces
   border: '#E0E0E0',          // Subtle borders & dividers
+  gridLine: '#F0F0F0',         // Pale chart gridlines
+  chartBar: '#FFA726',         // Chart bar fill (orange)
   danger: '#E53935',           // Destructive actions
   dangerLight: 'rgba(229, 57, 53, 0.10)',
   success: '#43A047',          // Positive feedback
@@ -52,15 +54,15 @@ export const Colors = {
 
 export const Typography = {
   displayLarge: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '800' as const,
-    lineHeight: 38,
+    lineHeight: 34,
     fontFamily: 'Inter_800ExtraBold',
   },
   displaySmall: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '700' as const,
-    lineHeight: 30,
+    lineHeight: 26,
     fontFamily: 'Inter_700Bold',
   },
   headingMedium: {

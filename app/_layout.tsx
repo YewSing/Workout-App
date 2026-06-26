@@ -1,9 +1,10 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import {
   useFonts,
@@ -14,8 +15,8 @@ import {
   Inter_800ExtraBold,
 } from '@expo-google-fonts/inter';
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Palette } from '@/constants/theme';
+import { SessionToastProvider } from '@/contexts/session-toast';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -57,16 +58,20 @@ export default function RootLayout() {
   };
 
   return (
-    <ThemeProvider value={AppTheme}>
-    <Stack initialRouteName="login" screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="index" />
-      <Stack.Screen name="login" />
-      <Stack.Screen name="register" />
-      <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="workout" />
-      <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-    </Stack>
-      <StatusBar style="dark" />
-    </ThemeProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemeProvider value={AppTheme}>
+        <SessionToastProvider>
+          <Stack initialRouteName="login" screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="index" />
+            <Stack.Screen name="login" />
+            <Stack.Screen name="register" />
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="workout" />
+            <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+          </Stack>
+          <StatusBar style="dark" />
+        </SessionToastProvider>
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }

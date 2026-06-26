@@ -32,7 +32,7 @@ export default function TabLayout() {
         name="workout"
         options={{
           title: 'Workout',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="fitness.center" color={color} />,
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="dumbbell.fill" color={color} />,
         }}
       />
       <Tabs.Screen

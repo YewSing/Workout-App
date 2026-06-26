@@ -1,39 +1,58 @@
-import React from 'react';
-import { StyleSheet, View, TouchableOpacity, Alert } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, View, TouchableOpacity, Alert, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Ionicons } from '@expo/vector-icons';
-import { logout } from '@/api/auth';
+import { logout, getMe } from '@/api/auth';
 import { Palette, Spacing, Radius, Shadows } from '@/constants/theme';
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
+
+  useEffect(() => {
+    getMe().then(data => {
+      if (data) {
+        setEmail(data.email);
+        setUsername(data.username);
+      }
+    });
+  }, []);
 
   const handleLogout = async () => {
     try {
       await logout();
       router.replace('/login');
-    } catch (error) {
-      Alert.alert('Logout failed', 'An error occurred while logging out.');
+    } catch {
+      if (Platform.OS === 'web') {
+        window.alert('Logout failed: An error occurred while logging out.');
+      } else {
+        Alert.alert('Logout failed', 'An error occurred while logging out.');
+      }
     }
   };
 
   const confirmLogout = () => {
-    Alert.alert(
-      'Log Out',
-      'Are you sure you want to log out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Log Out', style: 'destructive', onPress: handleLogout },
-      ]
-    );
+    if (Platform.OS === 'web') {
+      if (window.confirm('Are you sure you want to log out?')) handleLogout();
+    } else {
+      Alert.alert(
+        'Log Out',
+        'Are you sure you want to log out?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Log Out', style: 'destructive', onPress: handleLogout },
+        ]
+      );
+    }
   };
 
   const settingsItems = [
     { icon: 'settings-outline' as const, label: 'Account Settings', onPress: () => {} },
     { icon: 'notifications-outline' as const, label: 'Notifications', onPress: () => {} },
-    { icon: 'trash-bin-outline' as const, label: 'Deleted Templates', onPress: () => Alert.alert('Coming Soon', 'Trash / Deleted Templates recovery will be here.') },
+    { icon: 'trash-bin-outline' as const, label: 'Deleted Templates', onPress: () => Platform.OS === 'web' ? window.alert('Coming Soon: Trash / Deleted Templates recovery will be here.') : Alert.alert('Coming Soon', 'Trash / Deleted Templates recovery will be here.') },
   ];
 
   return (
@@ -47,8 +66,8 @@ export default function ProfileScreen() {
           <Ionicons name="person" size={40} color={Palette.textSecondary} />
         </View>
         <View style={styles.profileInfo}>
-          <ThemedText type="displaySmall" style={styles.name}>Athlete</ThemedText>
-          <ThemedText type="bodySmall" style={styles.email}>user@example.com</ThemedText>
+          <ThemedText type="displaySmall" style={styles.name}>{username || 'Athlete'}</ThemedText>
+          <ThemedText type="bodySmall" style={styles.email}>{email || '—'}</ThemedText>
         </View>
       </View>
 

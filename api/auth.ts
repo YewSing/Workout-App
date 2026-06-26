@@ -48,7 +48,8 @@ export async function login(email: string, password: string) {
   });
 
   if (!res.ok) {
-    throw new Error("Invalid credentials");
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.message ?? "Invalid credentials");
   }
 
   const data = await res.json(); 
@@ -58,6 +59,19 @@ export async function login(email: string, password: string) {
   }
 
   return data;
+}
+
+export async function getMe(): Promise<{ email: string; username: string } | null> {
+  const token = Platform.OS === 'web'
+    ? (typeof window !== 'undefined' ? localStorage.getItem('userToken') : null)
+    : await SecureStore.getItemAsync('userToken');
+  if (!token) return null;
+  const res = await fetch(`${AUTH_URL}/me`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return null;
+  return res.json();
 }
 
 export async function logout() {

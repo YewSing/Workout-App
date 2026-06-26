@@ -10,7 +10,7 @@ async function getToken() {
   return await SecureStore.getItemAsync('userToken');
 }
 
-export async function createWorkoutTemplate(name: string, description: string, exerciseIds: number[]) {
+export async function createWorkoutTemplate(name: string, description: string, variationName: string, exerciseIds: number[]) {
   const token = await getToken();
 
   const res = await fetch(`${BASE_URL}/Workouts`, {
@@ -19,11 +19,56 @@ export async function createWorkoutTemplate(name: string, description: string, e
       "Content-Type": "application/json",
       "Authorization": `Bearer ${token}` // Required for [Authorize] attribute
     },
-    body: JSON.stringify({ name, description, exerciseIds }),
+    body: JSON.stringify({ name, description, variationName, exerciseIds }),
   });
 
   if (!res.ok) throw new Error("Failed to save workout template");
   return res.json();
+}
+
+// ── Variations ("Gyms") ──
+
+export async function createVariation(workoutId: number | string, name: string, exerciseIds: number[]) {
+  const token = await getToken();
+  const res = await fetch(`${BASE_URL}/Workouts/${workoutId}/variations`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`
+    },
+    body: JSON.stringify({ name, exerciseIds }),
+  });
+  if (!res.ok) throw new Error("Failed to add gym");
+  return res.json();
+}
+
+export async function updateVariation(variationId: number | string, name: string, exerciseIds: number[]) {
+  const token = await getToken();
+  const res = await fetch(`${BASE_URL}/Workouts/variations/${variationId}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`
+    },
+    body: JSON.stringify({ name, exerciseIds }),
+  });
+  if (!res.ok) throw new Error("Failed to update gym");
+  return true;
+}
+
+export async function deleteVariation(variationId: number | string) {
+  const token = await getToken();
+  const res = await fetch(`${BASE_URL}/Workouts/variations/${variationId}`, {
+    method: "DELETE",
+    headers: { "Authorization": `Bearer ${token}` }
+  });
+  if (!res.ok) {
+    // Backend returns 400 when trying to remove the only remaining gym.
+    let message = "Failed to delete gym";
+    try { const body = await res.json(); if (body?.message) message = body.message; } catch {}
+    throw new Error(message);
+  }
+  return true;
 }
 
 export async function fetchAllExercises() {
@@ -34,8 +79,29 @@ export async function fetchAllExercises() {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${token}`
     }
-  }); 
+  });
   if (!res.ok) throw new Error("Failed to fetch exercises");
+  return res.json();
+}
+
+export async function createExercise(name: string, muscleGroup: string, description?: string, photoUrl?: string) {
+  const token = await getToken();
+  const res = await fetch(`${BASE_URL}/Exercises`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+    body: JSON.stringify({ name, muscleGroup, description, photoUrl }),
+  });
+  if (!res.ok) throw new Error("Failed to create exercise");
+  return res.json();
+}
+
+export async function fetchExerciseHistory(exerciseId: number | string) {
+  const token = await getToken();
+  const res = await fetch(`${BASE_URL}/Exercises/${exerciseId}/history`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error("Failed to fetch exercise history");
   return res.json();
 }
 

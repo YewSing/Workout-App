@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { StyleSheet, TextInput, TouchableOpacity, Alert, View, ActivityIndicator, ScrollView, Platform } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { createWorkoutTemplate, fetchAllExercises } from '@/api/workout';
+import { createWorkoutTemplate, createVariation, fetchAllExercises } from '@/api/workout';
 import { FilterChip } from '@/components/ui/FilterChip';
 import { Palette, Spacing, Radius, Shadows, Typography } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,20 +15,31 @@ interface Exercise {
 }
 
 export default function CreateWorkoutScreen() {
+  const router = useRouter();
+  // When workoutId is present we're adding a new "Gym" to an existing plan,
+  // otherwise we're creating a brand new plan (with its first gym).
+  const { workoutId } = useLocalSearchParams();
+  const isAddGym = !!workoutId;
+
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  // gymName only used in Add Gym mode; creating a plan always starts with gym "Main"
+  const [gymName, setGymName] = useState("");
   const [availableExercises, setAvailableExercises] = useState<Exercise[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedMuscle, setSelectedMuscle] = useState<string | null>(null);
-  const router = useRouter();
 
   const muscleGroupsMapping: Record<string, string[]> = {
     'Chest': ['chest', 'upper chest', 'lower chest', 'mid chest', 'pectorals', 'pecs'],
     'Back': ['back', 'lats', 'upper back', 'lower back', 'rhomboids', 'traps'],
     'Shoulder': ['shoulder', 'front delt', 'side delt', 'rear delt', 'delts', 'deltoids'],
-    'Legs': ['legs', 'quads', 'hamstrings', 'hamstring', 'calf', 'calves', 'glutes']
+    'Legs': ['legs', 'quads', 'hamstrings', 'hamstring', 'calf', 'calves', 'glutes'],
+    'Biceps': ['biceps', 'bicep'],
+    'Triceps': ['triceps', 'tricep'],
+    'Core': ['core', 'abs', 'abdominals', 'obliques'],
   };
 
   const filteredExercises = availableExercises.filter(exercise => {
@@ -67,16 +78,27 @@ export default function CreateWorkoutScreen() {
   }, []);
 
   const handleSave = async () => {
-    if (!name || selectedIds.length === 0) {
-      Alert.alert("Error", "Please provide a name and select at least one exercise.");
+    if (selectedIds.length === 0) {
+      Alert.alert("Error", "Select at least one exercise.");
+      return;
+    }
+    if (!isAddGym && !name) {
+      Alert.alert("Error", "Please give your plan a name.");
       return;
     }
     try {
-      await createWorkoutTemplate(name, description, selectedIds);
-      Alert.alert("Success", "Workout template created!");
-      router.replace('/(tabs)/home');
-    } catch (e) {
-      Alert.alert("Error", "Could not save template.");
+      setSaving(true);
+      if (isAddGym) {
+        await createVariation(workoutId as string, gymName.trim() || "Gym", selectedIds);
+        router.back();
+      } else {
+        await createWorkoutTemplate(name, description, gymName.trim() || "Main", selectedIds);
+        router.replace('/(tabs)/home');
+      }
+    } catch {
+      Alert.alert("Error", isAddGym ? "Could not add gym." : "Could not save plan.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -86,30 +108,50 @@ export default function CreateWorkoutScreen() {
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
           {/* Title Row: back button + title — scrollable together */}
           <View style={styles.titleRow}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-              <Ionicons name="chevron-back" size={24} color={Palette.textPrimary} />
+            <TouchableOpacity onPress={() => router.back()} style={[styles.backButton, { width: 32, height: 32 }]}>
+              <Ionicons name="chevron-back" size={20} color={Palette.textPrimary} />
             </TouchableOpacity>
-            <ThemedText type="displayLarge" style={styles.title}>Create Plan</ThemedText>
+            <ThemedText type="headingMedium" style={styles.title}>{isAddGym ? "Add Gym" : "Create Plan"}</ThemedText>
           </View>
 
           {/* Form fields */}
           <View style={styles.form}>
-            <ThemedText type="bodySmall" style={styles.inputLabel}>Name</ThemedText>
-            <TextInput 
-              style={styles.input} 
-              placeholder="e.g., Push Day" 
-              placeholderTextColor={Palette.textSecondary}
-              value={name} 
-              onChangeText={setName} 
-            />
-            <ThemedText type="bodySmall" style={[styles.inputLabel, { marginTop: Spacing.md }]}>Description</ThemedText>
-            <TextInput 
-              style={styles.input} 
-              placeholder="Focus areas, goals..." 
-              placeholderTextColor={Palette.textSecondary}
-              value={description} 
-              onChangeText={setDescription} 
-            />
+            {!isAddGym && (
+              <>
+                <ThemedText type="bodySmall" style={styles.inputLabel}>Plan Name</ThemedText>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g., Chest Day"
+                  placeholderTextColor={Palette.textSecondary}
+                  value={name}
+                  onChangeText={setName}
+                />
+                <ThemedText type="bodySmall" style={[styles.inputLabel, { marginTop: Spacing.md }]}>Description</ThemedText>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Focus areas, goals..."
+                  placeholderTextColor={Palette.textSecondary}
+                  value={description}
+                  onChangeText={setDescription}
+                />
+              </>
+            )}
+
+            {isAddGym && (
+              <>
+                <ThemedText type="bodySmall" style={styles.inputLabel}>Gym Name</ThemedText>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g., School Gym"
+                  placeholderTextColor={Palette.textSecondary}
+                  value={gymName}
+                  onChangeText={setGymName}
+                />
+                <ThemedText type="caption" style={styles.gymHint}>
+                  Pick the exercises you do for this plan at this gym.
+                </ThemedText>
+              </>
+            )}
           </View>
 
           <ThemedText type="headingMedium" style={styles.selectionHeader}>
@@ -141,7 +183,7 @@ export default function CreateWorkoutScreen() {
                 selected={selectedMuscle === null}
                 onPress={() => setSelectedMuscle(null)}
               />
-              {['Chest', 'Back', 'Shoulder', 'Legs'].map(muscle => (
+              {['Chest', 'Back', 'Shoulder', 'Legs', 'Biceps', 'Triceps', 'Core'].map(muscle => (
                 <FilterChip
                   key={muscle}
                   label={muscle}
@@ -184,8 +226,8 @@ export default function CreateWorkoutScreen() {
       </View>
 
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.saveButton} onPress={handleSave} activeOpacity={0.8}>
-          <ThemedText style={styles.saveButtonText}>Create Template</ThemedText>
+        <TouchableOpacity style={[styles.saveButton, saving && { opacity: 0.6 }]} onPress={handleSave} activeOpacity={0.8} disabled={saving}>
+          <ThemedText style={styles.saveButtonText}>{isAddGym ? "Add Gym" : "Create Plan"}</ThemedText>
         </TouchableOpacity>
       </View>
     </ThemedView>
@@ -223,6 +265,11 @@ const styles = StyleSheet.create({
   },
   form: {
     marginBottom: Spacing.xxl,
+  },
+  gymHint: {
+    color: Palette.textSecondary,
+    marginTop: Spacing.xs,
+    marginLeft: 4,
   },
   inputLabel: {
     color: Palette.textSecondary,

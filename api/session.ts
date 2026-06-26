@@ -1,0 +1,135 @@
+import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
+
+import { BASE_URL } from './config';
+
+async function getToken() {
+  if (Platform.OS === 'web') {
+    return typeof window !== 'undefined' ? localStorage.getItem('userToken') : null;
+  }
+  return await SecureStore.getItemAsync('userToken');
+}
+
+function authHeaders(token: string | null, json = true) {
+  const h: Record<string, string> = { Authorization: `Bearer ${token}` };
+  if (json) h["Content-Type"] = "application/json";
+  return h;
+}
+
+// Start a new session for a gym (variation). Returns the new sessionId.
+export async function createSession(variationId: number | string) {
+  const token = await getToken();
+  const res = await fetch(`${BASE_URL}/Session`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({
+      workoutVariationId: Number(variationId),
+      dateTime: new Date().toISOString(),
+    }),
+  });
+  if (!res.ok) throw new Error("Failed to start session");
+  return res.json(); // sessionId (int)
+}
+
+// Add an exercise to a session. Returns the new sessionExerciseId.
+export async function addExerciseToSession(sessionId: number, exerciseId: number, note: string = "") {
+  const token = await getToken();
+  const res = await fetch(`${BASE_URL}/Session/${sessionId}/exercise`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ exerciseId, note: note ?? "" }),
+  });
+  if (!res.ok) throw new Error("Failed to add exercise to session");
+  return res.json(); // sessionExerciseId (int)
+}
+
+// Add a single set under a session-exercise. breakTime is a TimeSpan string "hh:mm:ss".
+export async function addSet(sessionExerciseId: number, reps: number, weight: number, breakTime: string = "00:00:00") {
+  const token = await getToken();
+  const res = await fetch(`${BASE_URL}/Session/exercise/${sessionExerciseId}/set`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ reps, weight, breakTime }),
+  });
+  if (!res.ok) throw new Error("Failed to add set");
+  return true;
+}
+
+// Persist the elapsed duration when the workout is finished. durationSeconds -> "hh:mm:ss".
+export async function finishSession(sessionId: number, durationSeconds: number) {
+  const token = await getToken();
+  const h = Math.floor(durationSeconds / 3600);
+  const m = Math.floor((durationSeconds % 3600) / 60);
+  const s = Math.floor(durationSeconds % 60);
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  const duration = `${pad(h)}:${pad(m)}:${pad(s)}`;
+
+  const res = await fetch(`${BASE_URL}/Session/${sessionId}`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify({ duration }),
+  });
+  if (!res.ok) throw new Error("Failed to finish session");
+  return true;
+}
+
+export interface LastSet { reps: number; weight: number; }
+export interface LastExercise { exerciseId: number; sets: LastSet[]; }
+export interface LastSession { sessionId: number; dateTime: string; exercises: LastExercise[]; }
+
+export interface SetDetail { reps: number; weight: number; breakTime: string; }
+export interface ExerciseInSession { exerciseId: number; name: string; note: string; sets: SetDetail[]; }
+export interface SessionDetails {
+  sessionId: number;
+  dateTime: string;
+  duration: string;
+  totalVolume: number;
+  exercises: ExerciseInSession[];
+}
+
+// Full session data including exercises and sets, used for the session detail view.
+export async function getSessionDetails(sessionId: number | string): Promise<SessionDetails> {
+  const token = await getToken();
+  const res = await fetch(`${BASE_URL}/Session/${sessionId}`, {
+    method: "GET",
+    headers: authHeaders(token, false),
+  });
+  if (!res.ok) throw new Error("Failed to load session details");
+  const data = await res.json();
+  const unwrap = (v: any) => (v && v.$values ? v.$values : v) ?? [];
+  return {
+    sessionId: data.sessionId,
+    dateTime: data.dateTime,
+    duration: data.duration,
+    totalVolume: data.totalVolume,
+    exercises: unwrap(data.exercises).map((e: any) => ({
+      exerciseId: e.exerciseId,
+      name: e.name,
+      note: e.note,
+      sets: unwrap(e.sets).map((s: any) => ({ reps: s.reps, weight: s.weight, breakTime: s.breakTime })),
+    })),
+  };
+}
+
+// Most recent session for a gym, used to prefill "previous" weight/reps.
+// Returns null when there is no history yet (backend replies 204).
+export async function getLastSessionForVariation(variationId: number | string): Promise<LastSession | null> {
+  const token = await getToken();
+  const res = await fetch(`${BASE_URL}/Session/variation/${variationId}/last`, {
+    method: "GET",
+    headers: authHeaders(token, false),
+  });
+  if (res.status === 204) return null;
+  if (!res.ok) throw new Error("Failed to load previous session");
+  const data = await res.json();
+  // Unwrap EF reference-handler shapes if present.
+  const unwrap = (v: any) => (v && v.$values ? v.$values : v) ?? [];
+  return {
+    sessionId: data.sessionId,
+    dateTime: data.dateTime,
+    exercises: unwrap(data.exercises).map((e: any) => ({
+      exerciseId: e.exerciseId,
+      sets: unwrap(e.sets).map((s: any) => ({ reps: s.reps, weight: s.weight })),
+    })),
+  };
+}

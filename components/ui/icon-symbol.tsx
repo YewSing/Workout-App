@@ -18,7 +18,7 @@ const MAPPING = {
   'paperplane.fill': 'send',
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
-  'fitness.center': 'fitness-center',
+  'dumbbell.fill': 'fitness-center',
   'person.circle.fill': 'account-circle',
 } as any as IconMapping;
 
