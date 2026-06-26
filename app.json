@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "my-workout-app",
+    "name": "GymGoGor",
     "slug": "my-workout-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -47,6 +47,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "5f96269b-e215-42df-b892-a7102969b735"
+      }
+    },
+    "owner": "yewsing"
   }
 }
