@@ -54,6 +54,12 @@
         "projectId": "5f96269b-e215-42df-b892-a7102969b735"
       }
     },
-    "owner": "yewsing"
+    "owner": "yewsing",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/5f96269b-e215-42df-b892-a7102969b735"
+    }
   }
 }
