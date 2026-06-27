@@ -2,12 +2,14 @@ import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { StyleSheet, TextInput, TouchableOpacity, Alert, View, ActivityIndicator, ScrollView, Modal, Platform, UIManager, LayoutAnimation, FlatList } from 'react-native';
 import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { fetchWorkoutById, updateWorkoutTemplate, fetchAllExercises, deleteWorkoutTemplate, updateVariation, deleteVariation } from '@/api/workout';
 import { Ionicons } from '@expo/vector-icons';
 import { FilterChip } from '@/components/ui/FilterChip';
 import { Palette, Spacing, Radius, Shadows, Typography } from '@/constants/theme';
+import { useActiveWorkout } from '@/contexts/active-workout';
 
 if (Platform.OS === 'android') {
   if (UIManager.setLayoutAnimationEnabledExperimental) {
@@ -67,6 +69,7 @@ const durationToMinutes = (duration: string): number => {
 export default function WorkoutDetail() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -91,6 +94,9 @@ export default function WorkoutDetail() {
   const [showAddExModal, setShowAddExModal] = useState(false);
   const [addExSearch, setAddExSearch] = useState('');
   const [addExMuscle, setAddExMuscle] = useState<string | null>(null);
+
+  const { activeWorkout, discardActiveWorkout } = useActiveWorkout();
+  const [conflictModalVisible, setConflictModalVisible] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -129,6 +135,54 @@ export default function WorkoutDetail() {
 
   const currentVariation = variations.find(v => v.id === selectedVariationId) || null;
   const sessions = currentVariation?.sessions ?? [];
+
+  // Whether the currently selected gym is the one with a live (unfinished) draft —
+  // if so the footer button resumes it instead of offering to start a fresh one.
+  const isActiveWorkoutHere = !!currentVariation && activeWorkout?.variationId === String(currentVariation.id);
+  // True when a *different* gym/plan has a draft in progress — starting a new
+  // workout here would silently strand or discard that one, so we ask first.
+  const hasConflictingActiveWorkout = !!activeWorkout && !isActiveWorkoutHere;
+
+  const goToCreateSession = useCallback(() => {
+    if (!currentVariation) return;
+    router.push({
+      pathname: '/workout/create',
+      params: {
+        variationId: String(currentVariation.id),
+        planName: name,
+        gymName: currentVariation.name,
+        exercisesJson: JSON.stringify(orderedExercises),
+      },
+    } as any);
+  }, [currentVariation, name, orderedExercises, router]);
+
+  const handleStartOrContinue = () => {
+    if (!currentVariation) return;
+    if (hasConflictingActiveWorkout) {
+      setConflictModalVisible(true);
+      return;
+    }
+    goToCreateSession();
+  };
+
+  const handleGoToActiveWorkout = () => {
+    if (!activeWorkout) return;
+    setConflictModalVisible(false);
+    router.push({
+      pathname: '/workout/create',
+      params: {
+        variationId: activeWorkout.variationId,
+        planName: activeWorkout.planName,
+        gymName: activeWorkout.gymName,
+      },
+    } as any);
+  };
+
+  const handleDiscardAndStartNew = async () => {
+    await discardActiveWorkout();
+    setConflictModalVisible(false);
+    goToCreateSession();
+  };
 
   // Local copy of the gym's exercises that the drag-to-reorder list edits directly,
   // re-synced whenever the gym switches or fresh data loads.
@@ -396,7 +450,7 @@ export default function WorkoutDetail() {
           </ScrollView>
 
           {/* Floating Footer Button */}
-          <View style={styles.footer}>
+          <View style={[styles.footer, { paddingBottom: Spacing.md + insets.bottom }]}>
             <TouchableOpacity style={styles.saveButton} onPress={handleUpdate} activeOpacity={0.8}>
               <ThemedText style={styles.saveButtonText}>Save Changes</ThemedText>
             </TouchableOpacity>
@@ -572,23 +626,15 @@ export default function WorkoutDetail() {
           />
 
           {/* Floating Footer Button */}
-          <View style={styles.footer}>
+          <View style={[styles.footer, { paddingBottom: Spacing.md + insets.bottom }]}>
             <TouchableOpacity
               style={[styles.startButton, !currentVariation && { opacity: 0.5 }]}
               disabled={!currentVariation}
-              onPress={() => router.push({
-                pathname: '/workout/create',
-                params: {
-                  variationId: String(selectedVariationId),
-                  planName: name,
-                  gymName: currentVariation?.name ?? "",
-                  exercisesJson: JSON.stringify(orderedExercises),
-                }
-              } as any)}
+              onPress={handleStartOrContinue}
               activeOpacity={0.8}
             >
               <ThemedText style={styles.startButtonText}>
-                Start Workout{currentVariation ? ` · ${currentVariation.name}` : ""}
+                {isActiveWorkoutHere ? "Continue Workout" : "Start Workout"}{currentVariation ? ` · ${currentVariation.name}` : ""}
               </ThemedText>
             </TouchableOpacity>
           </View>
@@ -695,6 +741,38 @@ export default function WorkoutDetail() {
                 <Ionicons name="trash-outline" size={20} color={Palette.danger} />
               </View>
               <ThemedText type="bodyDefault" style={{ color: Palette.danger }}>Delete Whole Plan</ThemedText>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Active Workout Conflict Modal — shown when starting a workout here would
+          strand an unfinished draft for a different gym/plan */}
+      <Modal visible={conflictModalVisible} transparent animationType="fade" onRequestClose={() => setConflictModalVisible(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setConflictModalVisible(false)}>
+          <View style={styles.actionSheetContainer}>
+            <View style={styles.dragIndicator} />
+            <ThemedText type="bodySmall" style={styles.sheetTitle}>Workout In Progress</ThemedText>
+            <ThemedText type="bodyDefault" style={styles.conflictMessage}>
+              You have an unfinished workout for &quot;{activeWorkout?.gymName}&quot;
+              {activeWorkout ? ` (${Math.max(1, Math.round((Date.now() - activeWorkout.startTime) / 60000))} min so far)` : ""}.
+              Starting a new one will discard it.
+            </ThemedText>
+
+            <TouchableOpacity style={styles.actionItem} onPress={handleGoToActiveWorkout}>
+              <View style={styles.actionIconCircle}>
+                <Ionicons name="play-outline" size={20} color={Palette.textPrimary} />
+              </View>
+              <ThemedText type="bodyDefault">Go to Active Workout</ThemedText>
+            </TouchableOpacity>
+
+            <View style={styles.divider} />
+
+            <TouchableOpacity style={styles.actionItem} onPress={handleDiscardAndStartNew}>
+              <View style={[styles.actionIconCircle, { backgroundColor: Palette.dangerLight }]}>
+                <Ionicons name="trash-outline" size={20} color={Palette.danger} />
+              </View>
+              <ThemedText type="bodyDefault" style={{ color: Palette.danger }}>Discard & Start New</ThemedText>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -867,7 +945,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     padding: Spacing.xl,
-    paddingBottom: 40,
     backgroundColor: 'transparent',
   },
   saveButton: {
@@ -921,6 +998,11 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  conflictMessage: {
+    color: Palette.textSecondary,
+    marginBottom: Spacing.lg,
+    lineHeight: 20,
   },
   actionItem: {
     flexDirection: 'row',

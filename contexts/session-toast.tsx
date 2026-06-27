@@ -71,7 +71,7 @@ export function useSessionToast() {
 const styles = StyleSheet.create({
   overlay: {
     position: 'absolute',
-    bottom: 110, // sits just above the Finish Workout button on the active session page
+    bottom: 95, // sits just above the Finish Workout button on the active session page
     left: 0,
     right: 0,
     alignItems: 'center',

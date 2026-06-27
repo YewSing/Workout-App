@@ -17,6 +17,8 @@ import {
 
 import { Palette } from '@/constants/theme';
 import { SessionToastProvider } from '@/contexts/session-toast';
+import { ActiveWorkoutProvider } from '@/contexts/active-workout';
+import { ActiveWorkoutBar } from '@/components/ActiveWorkoutBar';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -60,17 +62,20 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ThemeProvider value={AppTheme}>
-        <SessionToastProvider>
-          <Stack initialRouteName="login" screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="index" />
-            <Stack.Screen name="login" />
-            <Stack.Screen name="register" />
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="workout" />
-            <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-          </Stack>
-          <StatusBar style="dark" />
-        </SessionToastProvider>
+        <ActiveWorkoutProvider>
+          <SessionToastProvider>
+            <Stack initialRouteName="login" screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="index" />
+              <Stack.Screen name="login" />
+              <Stack.Screen name="register" />
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="workout" />
+              <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+            </Stack>
+            <ActiveWorkoutBar />
+            <StatusBar style="dark" />
+          </SessionToastProvider>
+        </ActiveWorkoutProvider>
       </ThemeProvider>
     </GestureHandlerRootView>
   );

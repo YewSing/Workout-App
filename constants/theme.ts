@@ -117,6 +117,11 @@ export const Spacing = {
   xxxl: 48,
 };
 
+// ─── Tab Bar ──────────────────────────────────────────────────────────────────
+export const TabBar = {
+  height: 88,
+};
+
 // ─── Border Radius ────────────────────────────────────────────────────────────
 
 export const Radius = {

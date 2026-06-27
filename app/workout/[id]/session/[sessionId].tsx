@@ -54,7 +54,11 @@ export default function SessionDetail() {
           <ThemedText type="bodyDefault" style={{ color: Palette.textSecondary }}>Session not found.</ThemedText>
         </View>
       ) : (
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+          removeClippedSubviews={false}
+        >
           {/* Header */}
           <View style={styles.titleRow}>
             <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>

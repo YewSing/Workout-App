@@ -255,6 +255,9 @@ export default function HomeScreen() {
         </View>
 
         {/* ── Template Cards Grid ── */}
+        {workouts.length === 0 ? (
+          <ThemedText type="bodySmall" style={styles.emptyText}>No plan yet. Tap + to create one.</ThemedText>
+        ) : (
         <View style={styles.cardGrid}>
           {workouts.map((item) => (
             <TouchableOpacity
@@ -287,6 +290,7 @@ export default function HomeScreen() {
             </TouchableOpacity>
           ))}
         </View>
+        )}
 
       </ScrollView>
 
@@ -450,6 +454,11 @@ const styles = StyleSheet.create({
   },
   cardDesc: {
     color: Palette.textSecondary,
+  },
+  emptyText: {
+    textAlign: 'center',
+    color: Palette.textSecondary,
+    marginTop: Spacing.lg,
   },
 
   // ── Bottom Sheet Modal ──

@@ -3,7 +3,7 @@ import React from 'react';
 
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Palette } from '@/constants/theme';
+import { Palette, Shadows, TabBar } from '@/constants/theme';
 
 export default function TabLayout() {
   return (
@@ -15,8 +15,10 @@ export default function TabLayout() {
           backgroundColor: Palette.surface,
           borderTopColor: Palette.border,
           borderTopWidth: 0.5,
-          height: 88,
+          height: TabBar.height,
           paddingTop: 8,
+          paddingBottom: 8,
+          ...Shadows.card,
         },
         headerShown: false,
         tabBarButton: HapticTab,

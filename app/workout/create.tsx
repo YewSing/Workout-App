@@ -1,9 +1,10 @@
 import {
-  View, StyleSheet, TextInput, TouchableOpacity, Animated,
-  Platform, UIManager, ActivityIndicator, Alert, Modal, FlatList, ScrollView,
+  View, StyleSheet, TextInput, TouchableOpacity, Animated, AppState,
+  Platform, UIManager, ActivityIndicator, Alert, Modal, FlatList, ScrollView, LayoutAnimation,
 } from "react-native";
 import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
 import { useLocalSearchParams, useRouter, useNavigation } from "expo-router";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -13,6 +14,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FilterChip } from '@/components/ui/FilterChip';
 import { Palette, Spacing, Radius, Shadows, Typography } from '@/constants/theme';
 import { useSessionToast } from '@/contexts/session-toast';
+import { useActiveWorkout } from '@/contexts/active-workout';
 import { createSession, addExerciseToSession, addSet as apiAddSet, finishSession, getLastSessionForVariation } from '@/api/session';
 import { fetchAllExercises } from '@/api/workout';
 
@@ -166,7 +168,7 @@ const SetRow = ({ set, isPR, onUpdate, onCopyPrev, canRemove, onRemove }: any) =
 };
 
 const ExerciseCard = ({
-  ex, index, isExpanded, expandAnim,
+  ex, index, isExpanded,
   onToggle, onUpdateSet, onCopyPrev, onAddSet, onRemove, onRemoveSet, onDrag, isDragging,
 }: any) => {
   const [noteFocus, setNoteFocus] = useState(false);
@@ -206,11 +208,7 @@ const ExerciseCard = ({
       </View>
 
       {/* Expanded content */}
-      <Animated.View style={{
-        overflow: 'hidden',
-        maxHeight: expandAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 2000] }),
-        opacity: expandAnim,
-      }}>
+      {isExpanded && (
         <View style={styles.exerciseContent}>
           <View style={styles.tableRow}>
             <ThemedText type="caption" style={[styles.tableColHeader, { flex: 0.5 }]}>Set</ThemedText>
@@ -255,7 +253,7 @@ const ExerciseCard = ({
             <ThemedText type="bodySmall" style={{ color: Palette.textSecondary }}>Add set</ThemedText>
           </TouchableOpacity>
         </View>
-      </Animated.View>
+      )}
     </View>
   );
 };
@@ -263,6 +261,7 @@ const ExerciseCard = ({
 export default function CreateSession() {
   const router = useRouter();
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const { variationId, planName, gymName, exercisesJson } = useLocalSearchParams();
   const draftKey = `workout_draft_${variationId}`;
 
@@ -271,16 +270,17 @@ export default function CreateSession() {
   const [saving, setSaving] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [expandedKeys, setExpandedKeys] = useState<Record<string, boolean>>({});
-  const expandAnims = useRef<Record<string, Animated.Value>>({});
 
   const [restRemaining, setRestRemaining] = useState<number | null>(null);
   const [restVisible, setRestVisible] = useState(false);
   const restBarAnim = useRef(new Animated.Value(0)).current;   // opacity + transform (native driver)
   const restHeightAnim = useRef(new Animated.Value(0)).current; // height collapse (JS driver)
   const restRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const restEndRef = useRef<number | null>(null); // absolute ms timestamp the rest period ends at
   const startTimeRef = useRef<number>(Date.now());
 
   const { showSessionRunningToast, hideSessionRunningToast } = useSessionToast();
+  const { setActiveWorkout, clearActiveWorkout } = useActiveWorkout();
   // Set right before an intentional exit (Discard/Finish) so the listener below
   // doesn't show the "still running" toast for sessions that just ended on purpose.
   const intentionalExitRef = useRef(false);
@@ -292,15 +292,25 @@ export default function CreateSession() {
   const [exerciseMuscle, setExerciseMuscle] = useState<string | null>(null);
   const [loadingExercises, setLoadingExercises] = useState(false);
 
-  // Save draft whenever exercises change (after initial load)
+  // Save draft whenever exercises change (after initial load), and mirror its
+  // identity into the global context so other screens (the persistent nav bar,
+  // the plan detail page's button label) know this workout is in progress.
   useEffect(() => {
     if (!loading && exercises.length > 0) {
       AsyncStorage.setItem(draftKey, JSON.stringify({
         exercises,
         startTime: startTimeRef.current,
+        planName: String(planName ?? ''),
+        gymName: String(gymName ?? ''),
       })).catch(() => {});
+      setActiveWorkout({
+        variationId: String(variationId ?? ''),
+        planName: String(planName ?? ''),
+        gymName: String(gymName ?? ''),
+        startTime: startTimeRef.current,
+      });
     }
-  }, [exercises, loading, draftKey]);
+  }, [exercises, loading, draftKey, planName, gymName, variationId, setActiveWorkout]);
 
   useEffect(() => {
     const init = async () => {
@@ -311,9 +321,6 @@ export default function CreateSession() {
           const draft = JSON.parse(draftJson);
           const ageMs = Date.now() - draft.startTime;
           if (ageMs < 24 * 60 * 60 * 1000 && Array.isArray(draft.exercises) && draft.exercises.length > 0) {
-            draft.exercises.forEach((ex: ExItem) => {
-              expandAnims.current[ex.key] = new Animated.Value(0);
-            });
             startTimeRef.current = draft.startTime;
             setExercises(draft.exercises);
             setLoading(false);
@@ -358,7 +365,6 @@ export default function CreateSession() {
         }
       } catch {}
 
-      base.forEach(ex => { expandAnims.current[ex.key] = new Animated.Value(0); });
       setExercises(base);
       setLoading(false);
     };
@@ -413,35 +419,59 @@ export default function CreateSession() {
     ]).start(() => setRestVisible(false));
   };
 
+  // Ticks off an absolute end timestamp rather than decrementing a counter, so the
+  // displayed value self-corrects no matter how many setInterval ticks the OS actually
+  // delivered (it suspends/throttles JS timers while the app is backgrounded).
   const startRest = (seconds: number) => {
     if (restRef.current) clearInterval(restRef.current);
     const wasVisible = restVisible;
+    const endTime = Date.now() + seconds * 1000;
+    restEndRef.current = endTime;
     setRestRemaining(seconds);
     showRestBar(wasVisible);
     restRef.current = setInterval(() => {
-      setRestRemaining(prev => {
-        if (prev === null) return null;
-        if (prev <= 1) {
-          if (restRef.current) clearInterval(restRef.current);
-          haptic('success');
-          hideRestBar();
-          return null;
-        }
-        return prev - 1;
-      });
+      const remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
+      if (remaining <= 0) {
+        if (restRef.current) clearInterval(restRef.current);
+        restEndRef.current = null;
+        haptic('success');
+        hideRestBar();
+        setRestRemaining(null);
+        return;
+      }
+      setRestRemaining(remaining);
     }, 1000);
   };
 
   const stopRest = () => {
     if (restRef.current) clearInterval(restRef.current);
+    restEndRef.current = null;
     setRestRemaining(null);
     hideRestBar();
   };
 
+  // Resync the moment the app comes back to the foreground instead of waiting for the
+  // next tick — if the rest period already elapsed while backgrounded, complete it now.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active' || restEndRef.current === null) return;
+      const remaining = Math.max(0, Math.ceil((restEndRef.current - Date.now()) / 1000));
+      if (remaining <= 0) {
+        if (restRef.current) clearInterval(restRef.current);
+        restEndRef.current = null;
+        haptic('success');
+        hideRestBar();
+        setRestRemaining(null);
+      } else {
+        setRestRemaining(remaining);
+      }
+    });
+    return () => subscription.remove();
+  }, []);
+
   const toggleExpand = (key: string) => {
-    const isExpanded = !!expandedKeys[key];
-    setExpandedKeys(prev => ({ ...prev, [key]: !isExpanded }));
-    Animated.timing(expandAnims.current[key], { toValue: isExpanded ? 0 : 1, duration: 250, useNativeDriver: false }).start();
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setExpandedKeys(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
   const updateSet = (exKey: string, setId: string | null, field: string, value: any) => {
@@ -501,7 +531,6 @@ export default function CreateSession() {
         text: "Remove", style: "destructive", onPress: () => {
           setExercises(prev => prev.filter(ex => ex.key !== key));
           setExpandedKeys(prev => { const next = { ...prev }; delete next[key]; return next; });
-          delete expandAnims.current[key];
         },
       },
     ]);
@@ -514,11 +543,12 @@ export default function CreateSession() {
         text: "Discard", style: "destructive", onPress: async () => {
           intentionalExitRef.current = true;
           await AsyncStorage.removeItem(draftKey).catch(() => {});
+          clearActiveWorkout(String(variationId ?? ''));
           router.back();
         },
       },
     ]);
-  }, [draftKey, router]);
+  }, [draftKey, router, clearActiveWorkout, variationId]);
 
   const openAddExercise = async () => {
     setShowAddExercise(true);
@@ -543,7 +573,6 @@ export default function CreateSession() {
       note: '',
       sets: [{ id: 's1', prevWeight: null, prevReps: null, weight: '', reps: '', done: false }],
     };
-    expandAnims.current[key] = new Animated.Value(1);
     setExercises(prev => [...prev, newEx]);
     setExpandedKeys(prev => ({ ...prev, [key]: true }));
     setShowAddExercise(false);
@@ -567,6 +596,7 @@ export default function CreateSession() {
         { text: "Discard", style: "destructive", onPress: async () => {
           intentionalExitRef.current = true;
           await AsyncStorage.removeItem(draftKey).catch(() => {});
+          clearActiveWorkout(String(variationId ?? ''));
           router.back();
         }},
       ]);
@@ -588,6 +618,7 @@ export default function CreateSession() {
             }
             await finishSession(sessionId, elapsed);
             await AsyncStorage.removeItem(draftKey).catch(() => {});
+            clearActiveWorkout(String(variationId ?? ''));
             haptic('success');
             intentionalExitRef.current = true;
             router.back();
@@ -599,7 +630,7 @@ export default function CreateSession() {
         },
       },
     ]);
-  }, [exercises, doneSets, totalVolume, elapsed, variationId, router, draftKey]);
+  }, [exercises, doneSets, totalVolume, elapsed, variationId, router, draftKey, clearActiveWorkout]);
 
   const filteredAddExercises = useMemo(() =>
     allExercises
@@ -684,54 +715,59 @@ export default function CreateSession() {
         </Animated.View>
       )}
 
-      {/* Exercise list — DraggableFlatList handles drag-to-reorder */}
-      <DraggableFlatList
-        data={exercises}
-        keyExtractor={(item) => item.key}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        animationConfig={{ damping: 18, stiffness: 90, mass: 0.9 }}
-        onDragEnd={({ data }) => {
-          setExercises(data);
-          haptic('select');
-        }}
-        ListEmptyComponent={
-          <ThemedText type="bodySmall" style={styles.emptyText}>
-            This gym has no exercises. Add some from the plan first.
-          </ThemedText>
-        }
-        ListFooterComponent={
-          <>
-            <TouchableOpacity style={styles.addExerciseButton} onPress={openAddExercise} activeOpacity={0.7}>
-              <Ionicons name="add-circle-outline" size={18} color={Palette.accent} />
-              <ThemedText style={styles.addExerciseText}>Add Exercise</ThemedText>
-            </TouchableOpacity>
-            <View style={{ height: 90 }} />
-          </>
-        }
-        renderItem={({ item, drag, isActive, getIndex }) => (
-          <ScaleDecorator activeScale={0.97}>
-            <ExerciseCard
-              ex={item}
-              index={getIndex() ?? 0}
-              isExpanded={!!expandedKeys[item.key]}
-              expandAnim={expandAnims.current[item.key]}
-              onToggle={() => toggleExpand(item.key)}
-              onUpdateSet={updateSet}
-              onCopyPrev={copyPrev}
-              onAddSet={addSet}
-              onRemove={() => removeExercise(item.key, item.name)}
-              onRemoveSet={removeSet}
-              onDrag={drag}
-              isDragging={isActive}
-            />
-          </ScaleDecorator>
-        )}
-      />
+      {/* Exercise list — DraggableFlatList handles drag-to-reorder. Wrapped in an
+          explicit flex:1 View so the list gets a bounded height instead of sizing
+          to its own content; without that bound its scroll range falls short of
+          the real content height once cards expand. */}
+      <View style={{ flex: 1 }}>
+        <DraggableFlatList
+          data={exercises}
+          keyExtractor={(item) => item.key}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          disableVirtualization
+          animationConfig={{ damping: 18, stiffness: 90, mass: 0.9 }}
+          onDragEnd={({ data }) => {
+            setExercises(data);
+            haptic('select');
+          }}
+          ListEmptyComponent={
+            <ThemedText type="bodySmall" style={styles.emptyText}>
+              This gym has no exercises. Add some from the plan first.
+            </ThemedText>
+          }
+          ListFooterComponent={
+            <>
+              <TouchableOpacity style={styles.addExerciseButton} onPress={openAddExercise} activeOpacity={0.7}>
+                <Ionicons name="add-circle-outline" size={18} color={Palette.accent} />
+                <ThemedText style={styles.addExerciseText}>Add Exercise</ThemedText>
+              </TouchableOpacity>
+              <View style={{ height: 90 }} />
+            </>
+          }
+          renderItem={({ item, drag, isActive, getIndex }) => (
+            <ScaleDecorator activeScale={0.97}>
+              <ExerciseCard
+                ex={item}
+                index={getIndex() ?? 0}
+                isExpanded={!!expandedKeys[item.key]}
+                onToggle={() => toggleExpand(item.key)}
+                onUpdateSet={updateSet}
+                onCopyPrev={copyPrev}
+                onAddSet={addSet}
+                onRemove={() => removeExercise(item.key, item.name)}
+                onRemoveSet={removeSet}
+                onDrag={drag}
+                isDragging={isActive}
+              />
+            </ScaleDecorator>
+          )}
+        />
+      </View>
 
       {/* Finish bar */}
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Spacing.md + insets.bottom }]}>
         <TouchableOpacity style={[styles.finishButton, saving && { opacity: 0.6 }]} onPress={finishWorkout} disabled={saving} activeOpacity={0.85}>
           {saving ? (
             <ActivityIndicator color={Palette.textOnAccent} />
@@ -846,6 +882,7 @@ const styles = StyleSheet.create({
   hero: {
     backgroundColor: Palette.accent,
     marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.sm,
     borderRadius: Radius.xl,
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.xs,
@@ -1087,7 +1124,6 @@ const styles = StyleSheet.create({
     right: 0,
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.md,
-    paddingBottom: 36,
     backgroundColor: Palette.background,
     borderTopWidth: 1,
     borderTopColor: Palette.border,
