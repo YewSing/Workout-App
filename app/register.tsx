@@ -6,22 +6,51 @@ import { ThemedView } from '@/components/themed-view';
 import { register } from "../api/auth";
 import { Palette, Spacing, Radius, Shadows, Typography } from '@/constants/theme';
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*[^a-zA-Z0-9]).{8,}$/;
+
 export default function RegisterScreen() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const router = useRouter();
 
   const handleRegister = async () => {
+    const trimmedUsername = username.trim();
+    const trimmedEmail = email.trim();
+
+    if (!trimmedUsername || !trimmedEmail || !password || !confirmPassword) {
+      Alert.alert("Error", "Please fill in all fields.");
+      return;
+    }
+
+    if (!EMAIL_REGEX.test(trimmedEmail)) {
+      Alert.alert("Error", "Please enter a valid email address.");
+      return;
+    }
+
+    if (!PASSWORD_REGEX.test(password)) {
+      Alert.alert("Error", "Password must be at least 8 characters and include an uppercase letter and a special character.");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      Alert.alert("Error", "Passwords do not match.");
+      return;
+    }
+
+    setSubmitting(true);
     try {
-      console.log("Registering")
-      await register(email, password, username);
+      await register(trimmedEmail, password, trimmedUsername);
 
       Alert.alert("Success", "Account created!");
       router.push("/login");
     } catch (err: any) {
-      Alert.alert("Error", err.message);
+      Alert.alert("Error", err.message ?? "Registration failed. Please try again.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -66,7 +95,7 @@ export default function RegisterScreen() {
               <ThemedText type="bodySmall" style={styles.label}>Password</ThemedText>
               <TextInput
                 style={styles.input}
-                placeholder="Min. 8 characters"
+                placeholder="Min. 8 characters, 1 uppercase, 1 symbol"
                 placeholderTextColor={Palette.textSecondary}
                 value={password}
                 onChangeText={setPassword}
@@ -86,8 +115,15 @@ export default function RegisterScreen() {
               />
             </View>
 
-            <TouchableOpacity style={styles.registerButton} onPress={handleRegister} activeOpacity={0.8}>
-              <ThemedText style={styles.registerButtonText}>Create Account</ThemedText>
+            <TouchableOpacity
+              style={[styles.registerButton, submitting && styles.registerButtonDisabled]}
+              onPress={handleRegister}
+              activeOpacity={0.8}
+              disabled={submitting}
+            >
+              <ThemedText style={styles.registerButtonText}>
+                {submitting ? "Creating Account..." : "Create Account"}
+              </ThemedText>
             </TouchableOpacity>
           </View>
 
@@ -150,6 +186,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: Spacing.md,
     ...Shadows.button,
+  },
+  registerButtonDisabled: {
+    opacity: 0.6,
   },
   registerButtonText: {
     color: Palette.textOnAccent,

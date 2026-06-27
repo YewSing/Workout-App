@@ -26,7 +26,14 @@ export async function register(email: string, password: string, username: string
     }),
   });
 
-  const data = await res.json(); 
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    const errors = body?.errors as Record<string, string[]> | undefined;
+    const fieldError = errors ? Object.values(errors)[0]?.[0] : undefined;
+    throw new Error(body?.message ?? fieldError ?? body?.title ?? "Registration failed");
+  }
+
+  const data = await res.json();
 
   if (data && data.token) {
     await saveToken(data.token);
