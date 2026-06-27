@@ -1,27 +1,12 @@
-import * as SecureStore from 'expo-secure-store';
-import { Platform } from 'react-native';
+import { authFetch } from './http';
 
-import { BASE_URL } from './config';
-
-async function getToken() {
-  if (Platform.OS === 'web') {
-    return typeof window !== 'undefined' ? localStorage.getItem('userToken') : null;
-  }
-  return await SecureStore.getItemAsync('userToken');
-}
-
-function authHeaders(token: string | null, json = true) {
-  const h: Record<string, string> = { Authorization: `Bearer ${token}` };
-  if (json) h["Content-Type"] = "application/json";
-  return h;
-}
+const jsonHeaders = { "Content-Type": "application/json" };
 
 // Start a new session for a gym (variation). Returns the new sessionId.
 export async function createSession(variationId: number | string) {
-  const token = await getToken();
-  const res = await fetch(`${BASE_URL}/Session`, {
+  const res = await authFetch(`/Session`, {
     method: "POST",
-    headers: authHeaders(token),
+    headers: jsonHeaders,
     body: JSON.stringify({
       workoutVariationId: Number(variationId),
       dateTime: new Date().toISOString(),
@@ -33,10 +18,9 @@ export async function createSession(variationId: number | string) {
 
 // Add an exercise to a session. Returns the new sessionExerciseId.
 export async function addExerciseToSession(sessionId: number, exerciseId: number, note: string = "") {
-  const token = await getToken();
-  const res = await fetch(`${BASE_URL}/Session/${sessionId}/exercise`, {
+  const res = await authFetch(`/Session/${sessionId}/exercise`, {
     method: "POST",
-    headers: authHeaders(token),
+    headers: jsonHeaders,
     body: JSON.stringify({ exerciseId, note: note ?? "" }),
   });
   if (!res.ok) throw new Error("Failed to add exercise to session");
@@ -45,10 +29,9 @@ export async function addExerciseToSession(sessionId: number, exerciseId: number
 
 // Add a single set under a session-exercise. breakTime is a TimeSpan string "hh:mm:ss".
 export async function addSet(sessionExerciseId: number, reps: number, weight: number, breakTime: string = "00:00:00") {
-  const token = await getToken();
-  const res = await fetch(`${BASE_URL}/Session/exercise/${sessionExerciseId}/set`, {
+  const res = await authFetch(`/Session/exercise/${sessionExerciseId}/set`, {
     method: "POST",
-    headers: authHeaders(token),
+    headers: jsonHeaders,
     body: JSON.stringify({ reps, weight, breakTime }),
   });
   if (!res.ok) throw new Error("Failed to add set");
@@ -57,16 +40,15 @@ export async function addSet(sessionExerciseId: number, reps: number, weight: nu
 
 // Persist the elapsed duration when the workout is finished. durationSeconds -> "hh:mm:ss".
 export async function finishSession(sessionId: number, durationSeconds: number) {
-  const token = await getToken();
   const h = Math.floor(durationSeconds / 3600);
   const m = Math.floor((durationSeconds % 3600) / 60);
   const s = Math.floor(durationSeconds % 60);
   const pad = (n: number) => n.toString().padStart(2, "0");
   const duration = `${pad(h)}:${pad(m)}:${pad(s)}`;
 
-  const res = await fetch(`${BASE_URL}/Session/${sessionId}`, {
+  const res = await authFetch(`/Session/${sessionId}`, {
     method: "PUT",
-    headers: authHeaders(token),
+    headers: jsonHeaders,
     body: JSON.stringify({ duration }),
   });
   if (!res.ok) throw new Error("Failed to finish session");
@@ -89,11 +71,7 @@ export interface SessionDetails {
 
 // Full session data including exercises and sets, used for the session detail view.
 export async function getSessionDetails(sessionId: number | string): Promise<SessionDetails> {
-  const token = await getToken();
-  const res = await fetch(`${BASE_URL}/Session/${sessionId}`, {
-    method: "GET",
-    headers: authHeaders(token, false),
-  });
+  const res = await authFetch(`/Session/${sessionId}`, { method: "GET" });
   if (!res.ok) throw new Error("Failed to load session details");
   const data = await res.json();
   const unwrap = (v: any) => (v && v.$values ? v.$values : v) ?? [];
@@ -114,11 +92,7 @@ export async function getSessionDetails(sessionId: number | string): Promise<Ses
 // Most recent session for a gym, used to prefill "previous" weight/reps.
 // Returns null when there is no history yet (backend replies 204).
 export async function getLastSessionForVariation(variationId: number | string): Promise<LastSession | null> {
-  const token = await getToken();
-  const res = await fetch(`${BASE_URL}/Session/variation/${variationId}/last`, {
-    method: "GET",
-    headers: authHeaders(token, false),
-  });
+  const res = await authFetch(`/Session/variation/${variationId}/last`, { method: "GET" });
   if (res.status === 204) return null;
   if (!res.ok) throw new Error("Failed to load previous session");
   const data = await res.json();

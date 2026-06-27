@@ -1,23 +1,10 @@
-import * as SecureStore from 'expo-secure-store';
-import { Platform } from 'react-native';
-
-import { BASE_URL } from './config';
-
-async function getToken() {
-  if (Platform.OS === 'web') {
-    return typeof window !== 'undefined' ? localStorage.getItem('userToken') : null;
-  }
-  return await SecureStore.getItemAsync('userToken');
-}
+import { authFetch } from './http';
 
 export async function createWorkoutTemplate(name: string, description: string, variationName: string, exerciseIds: number[]) {
-  const token = await getToken();
-
-  const res = await fetch(`${BASE_URL}/Workouts`, {
+  const res = await authFetch(`/Workouts`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}` // Required for [Authorize] attribute
     },
     body: JSON.stringify({ name, description, variationName, exerciseIds }),
   });
@@ -29,12 +16,10 @@ export async function createWorkoutTemplate(name: string, description: string, v
 // ── Variations ("Gyms") ──
 
 export async function createVariation(workoutId: number | string, name: string, exerciseIds: number[]) {
-  const token = await getToken();
-  const res = await fetch(`${BASE_URL}/Workouts/${workoutId}/variations`, {
+  const res = await authFetch(`/Workouts/${workoutId}/variations`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`
     },
     body: JSON.stringify({ name, exerciseIds }),
   });
@@ -43,12 +28,10 @@ export async function createVariation(workoutId: number | string, name: string, 
 }
 
 export async function updateVariation(variationId: number | string, name: string, exerciseIds: number[]) {
-  const token = await getToken();
-  const res = await fetch(`${BASE_URL}/Workouts/variations/${variationId}`, {
+  const res = await authFetch(`/Workouts/variations/${variationId}`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`
     },
     body: JSON.stringify({ name, exerciseIds }),
   });
@@ -57,10 +40,8 @@ export async function updateVariation(variationId: number | string, name: string
 }
 
 export async function deleteVariation(variationId: number | string) {
-  const token = await getToken();
-  const res = await fetch(`${BASE_URL}/Workouts/variations/${variationId}`, {
+  const res = await authFetch(`/Workouts/variations/${variationId}`, {
     method: "DELETE",
-    headers: { "Authorization": `Bearer ${token}` }
   });
   if (!res.ok) {
     // Backend returns 400 when trying to remove the only remaining gym.
@@ -72,23 +53,20 @@ export async function deleteVariation(variationId: number | string) {
 }
 
 export async function fetchAllExercises() {
-  const token = await getToken();
-  const res = await fetch(`${BASE_URL}/Exercises`, {
+  const res = await authFetch(`/Exercises`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`
-    }
+    },
   });
   if (!res.ok) throw new Error("Failed to fetch exercises");
   return res.json();
 }
 
 export async function createExercise(name: string, muscleGroup: string, description?: string, photoUrl?: string) {
-  const token = await getToken();
-  const res = await fetch(`${BASE_URL}/Exercises`, {
+  const res = await authFetch(`/Exercises`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, muscleGroup, description, photoUrl }),
   });
   if (!res.ok) throw new Error("Failed to create exercise");
@@ -96,48 +74,41 @@ export async function createExercise(name: string, muscleGroup: string, descript
 }
 
 export async function fetchExerciseHistory(exerciseId: number | string) {
-  const token = await getToken();
-  const res = await fetch(`${BASE_URL}/Exercises/${exerciseId}/history`, {
+  const res = await authFetch(`/Exercises/${exerciseId}/history`, {
     method: "GET",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+    headers: { "Content-Type": "application/json" },
   });
   if (!res.ok) throw new Error("Failed to fetch exercise history");
   return res.json();
 }
 
 export async function fetchWorkouts() {
-  const token = await getToken();
-  const res = await fetch(`${BASE_URL}/Workouts`, {
+  const res = await authFetch(`/Workouts`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`
-    }
-  }); 
+    },
+  });
   if (!res.ok) throw new Error("Failed to fetch workouts");
   return res.json();
 }
 
 export async function fetchWorkoutById(id: number | string) {
-  const token = await getToken();
-  const res = await fetch(`${BASE_URL}/Workouts/${id}`, {
+  const res = await authFetch(`/Workouts/${id}`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`
-    }
-  }); 
+    },
+  });
   if (!res.ok) throw new Error("Failed to fetch workout details");
   return res.json();
 }
 
 export async function updateWorkoutTemplate(id: number | string, name: string, description: string, exerciseIds: number[]) {
-  const token = await getToken();
-  const res = await fetch(`${BASE_URL}/Workouts/${id}`, {
+  const res = await authFetch(`/Workouts/${id}`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`
     },
     body: JSON.stringify({ name, description, exerciseIds }),
   });
@@ -148,12 +119,8 @@ export async function updateWorkoutTemplate(id: number | string, name: string, d
 }
 
 export async function deleteWorkoutTemplate(id: number | string) {
-  const token = await getToken();
-  const res = await fetch(`${BASE_URL}/Workouts/${id}`, {
+  const res = await authFetch(`/Workouts/${id}`, {
     method: "DELETE",
-    headers: {
-      "Authorization": `Bearer ${token}`
-    }
   });
 
   if (!res.ok) throw new Error("Failed to delete workout template");

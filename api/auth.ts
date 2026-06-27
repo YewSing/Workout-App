@@ -1,17 +1,8 @@
-import * as SecureStore from 'expo-secure-store';
-import { Platform } from 'react-native';
-
 import { BASE_URL } from './config';
+import { authFetch } from './http';
+import { saveTokens, clearTokens } from './tokenStorage';
 
 const AUTH_URL = `${BASE_URL}/auth`;
-
-async function saveToken(token: string) {
-  if (Platform.OS === 'web') {
-    if (typeof window !== 'undefined') localStorage.setItem('userToken', token);
-  } else {
-    await SecureStore.setItemAsync('userToken', token);
-  }
-}
 
 export async function register(email: string, password: string, username: string) {
   const res = await fetch(`${AUTH_URL}/register`, {
@@ -35,8 +26,8 @@ export async function register(email: string, password: string, username: string
 
   const data = await res.json();
 
-  if (data && data.token) {
-    await saveToken(data.token);
+  if (data?.token && data?.refreshToken) {
+    await saveTokens(data.token, data.refreshToken);
   }
 
   return data;
@@ -59,38 +50,23 @@ export async function login(email: string, password: string) {
     throw new Error(body?.message ?? "Invalid credentials");
   }
 
-  const data = await res.json(); 
+  const data = await res.json();
 
-  if (data && data.token) {
-    await saveToken(data.token);
+  if (data?.token && data?.refreshToken) {
+    await saveTokens(data.token, data.refreshToken);
   }
 
   return data;
 }
 
 export async function getMe(): Promise<{ email: string; username: string } | null> {
-  const token = Platform.OS === 'web'
-    ? (typeof window !== 'undefined' ? localStorage.getItem('userToken') : null)
-    : await SecureStore.getItemAsync('userToken');
-  if (!token) return null;
-  const res = await fetch(`${AUTH_URL}/me`, {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await authFetch('/auth/me', { method: 'GET' });
   if (!res.ok) return null;
   return res.json();
 }
 
 export async function logout() {
-  const res = await fetch(`${AUTH_URL}/logout`, {
-    method: "POST",
-  });
-
-  if (Platform.OS === 'web') {
-    if (typeof window !== 'undefined') localStorage.removeItem('userToken');
-  } else {
-    await SecureStore.deleteItemAsync('userToken');
-  }
-
+  const res = await authFetch('/auth/logout', { method: 'POST' });
+  await clearTokens();
   return res;
 }
