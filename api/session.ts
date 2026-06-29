@@ -38,8 +38,18 @@ export async function addSet(sessionExerciseId: number, reps: number, weight: nu
   return true;
 }
 
+// Temporary diagnostic payload for tracking down a bug where Duration is saved as 0
+// despite a real elapsed time on the client. Logged server-side; safe to remove once
+// that's root-caused.
+export interface FinishSessionDebug {
+  startTime?: number;
+  clientNow?: number;
+  restoreSource?: string;
+  restoreDetail?: string;
+}
+
 // Persist the elapsed duration when the workout is finished. durationSeconds -> "hh:mm:ss".
-export async function finishSession(sessionId: number, durationSeconds: number) {
+export async function finishSession(sessionId: number, durationSeconds: number, debug?: FinishSessionDebug) {
   const h = Math.floor(durationSeconds / 3600);
   const m = Math.floor((durationSeconds % 3600) / 60);
   const s = Math.floor(durationSeconds % 60);
@@ -49,7 +59,7 @@ export async function finishSession(sessionId: number, durationSeconds: number) 
   const res = await authFetch(`/Session/${sessionId}`, {
     method: "PUT",
     headers: jsonHeaders,
-    body: JSON.stringify({ duration }),
+    body: JSON.stringify({ duration, debug }),
   });
   if (!res.ok) throw new Error("Failed to finish session");
   return true;

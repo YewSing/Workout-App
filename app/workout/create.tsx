@@ -278,6 +278,11 @@ export default function CreateSession() {
   const restRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const restEndRef = useRef<number | null>(null); // absolute ms timestamp the rest period ends at
   const startTimeRef = useRef<number>(Date.now());
+  // Temporary diagnostic for tracking down a bug where Duration is saved as 0 despite
+  // a real elapsed time — records which path init() took to set startTimeRef. Sent
+  // along with finishSession so it shows up in backend logs. Safe to remove once
+  // root-caused.
+  const restoreInfoRef = useRef<{ source: string; detail?: string }>({ source: 'pending' });
 
   const { showSessionRunningToast, hideSessionRunningToast } = useSessionToast();
   const { setActiveWorkout, clearActiveWorkout } = useActiveWorkout();
@@ -322,13 +327,19 @@ export default function CreateSession() {
           const ageMs = Date.now() - draft.startTime;
           if (ageMs < 24 * 60 * 60 * 1000 && Array.isArray(draft.exercises) && draft.exercises.length > 0) {
             startTimeRef.current = draft.startTime;
+            restoreInfoRef.current = { source: 'draft', detail: `startTime=${draft.startTime} ageMs=${ageMs}` };
             setExercises(draft.exercises);
             setLoading(false);
             return;
           }
+          restoreInfoRef.current = { source: 'fresh', detail: `draft rejected: ageMs=${ageMs} exCount=${Array.isArray(draft.exercises) ? draft.exercises.length : 'n/a'}` };
           await AsyncStorage.removeItem(draftKey);
+        } else {
+          restoreInfoRef.current = { source: 'fresh', detail: 'no draft found' };
         }
-      } catch {}
+      } catch (err: any) {
+        restoreInfoRef.current = { source: 'fresh-error', detail: String(err?.message ?? err) };
+      }
 
       // Fresh start
       let base: ExItem[] = [];
@@ -616,14 +627,20 @@ export default function CreateSession() {
                 await apiAddSet(seid, parseInt(s.reps) || 0, parseFloat(s.weight) || 0);
               }
             }
-            await finishSession(sessionId, elapsed);
+            await finishSession(sessionId, elapsed, {
+              startTime: startTimeRef.current,
+              clientNow: Date.now(),
+              restoreSource: restoreInfoRef.current.source,
+              restoreDetail: restoreInfoRef.current.detail,
+            });
             await AsyncStorage.removeItem(draftKey).catch(() => {});
             clearActiveWorkout(String(variationId ?? ''));
             haptic('success');
             intentionalExitRef.current = true;
             router.back();
-          } catch {
-            Alert.alert("Error", "Could not save your workout. Please try again.");
+          } catch (err: any) {
+            console.error('finishWorkout failed:', err);
+            Alert.alert("Error", `Could not save your workout: ${err?.message ?? 'Unknown error'}\n\nYour progress is still saved locally — try Finish again.`);
           } finally {
             setSaving(false);
           }
