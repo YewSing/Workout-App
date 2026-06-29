@@ -18,6 +18,7 @@ import {
 import { Palette } from '@/constants/theme';
 import { SessionToastProvider } from '@/contexts/session-toast';
 import { ActiveWorkoutProvider } from '@/contexts/active-workout';
+import { AuthProvider, useAuth } from '@/contexts/auth';
 import { ActiveWorkoutBar } from '@/components/ActiveWorkoutBar';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
@@ -28,6 +29,14 @@ export const unstable_settings = {
 };
 
 export default function RootLayout() {
+  return (
+    <AuthProvider>
+      <RootLayoutNav />
+    </AuthProvider>
+  );
+}
+
+function RootLayoutNav() {
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -35,14 +44,15 @@ export default function RootLayout() {
     Inter_700Bold,
     Inter_800ExtraBold,
   });
+  const { isReady, isAuthenticated } = useAuth();
 
   useEffect(() => {
-    if (fontsLoaded) {
+    if (fontsLoaded && isReady) {
       SplashScreen.hideAsync();
     }
-  }, [fontsLoaded]);
+  }, [fontsLoaded, isReady]);
 
-  if (!fontsLoaded) {
+  if (!fontsLoaded || !isReady) {
     return null;
   }
 
@@ -64,7 +74,7 @@ export default function RootLayout() {
       <ThemeProvider value={AppTheme}>
         <ActiveWorkoutProvider>
           <SessionToastProvider>
-            <Stack initialRouteName="login" screenOptions={{ headerShown: false }}>
+            <Stack initialRouteName={isAuthenticated ? '(tabs)' : 'login'} screenOptions={{ headerShown: false }}>
               <Stack.Screen name="index" />
               <Stack.Screen name="login" />
               <Stack.Screen name="register" />
