@@ -44,7 +44,7 @@ function RootLayoutNav() {
     Inter_700Bold,
     Inter_800ExtraBold,
   });
-  const { isReady, isAuthenticated } = useAuth();
+  const { isReady } = useAuth();
 
   useEffect(() => {
     if (fontsLoaded && isReady) {
@@ -74,7 +74,7 @@ function RootLayoutNav() {
       <ThemeProvider value={AppTheme}>
         <ActiveWorkoutProvider>
           <SessionToastProvider>
-            <Stack initialRouteName={isAuthenticated ? '(tabs)' : 'login'} screenOptions={{ headerShown: false }}>
+            <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen name="index" />
               <Stack.Screen name="login" />
               <Stack.Screen name="register" />

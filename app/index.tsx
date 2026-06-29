@@ -1,10 +1,17 @@
-import { Link } from "expo-router";
+import { Link, Redirect } from "expo-router";
 import { StyleSheet, View, TouchableOpacity } from "react-native";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Palette, Spacing, Radius, Shadows } from '@/constants/theme';
+import { useAuth } from '@/contexts/auth';
 
 export default function WelcomeScreen() {
+  const { isAuthenticated } = useAuth();
+
+  if (isAuthenticated) {
+    return <Redirect href="/(tabs)/home" />;
+  }
+
   return (
     <ThemedView style={styles.container}>
       {/* Top Section: Branding & Motivation */}
