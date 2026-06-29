@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View, ScrollView, TouchableOpacity, Dimensions, Modal, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -126,7 +126,7 @@ export default function HomeScreen() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [monthOffset, setMonthOffset] = useState(0);
 
-  const loadWorkouts = async () => {
+  const loadWorkouts = useCallback(async () => {
     try {
       const data = await fetchWorkouts();
       const list: any[] = data && data.$values ? data.$values : Array.isArray(data) ? data : [];
@@ -145,11 +145,11 @@ export default function HomeScreen() {
     } catch (err) {
       console.log("Error loading workouts", err);
     }
-  };
-
-  useEffect(() => {
-    loadWorkouts();
   }, []);
+
+  useFocusEffect(useCallback(() => {
+    loadWorkouts();
+  }, [loadWorkouts]));
 
   const weekData = useMemo(() => computeWeekData(allSessions, weekOffset), [allSessions, weekOffset]);
   const monthData = useMemo(() => computeMonthData(allSessions, monthOffset), [allSessions, monthOffset]);
