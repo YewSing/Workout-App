@@ -8,6 +8,9 @@ import { ThemedView } from '@/components/themed-view';
 import { fetchWorkoutById, updateWorkoutTemplate, fetchAllExercises, deleteWorkoutTemplate, updateVariation, deleteVariation } from '@/api/workout';
 import { Ionicons } from '@expo/vector-icons';
 import { FilterChip } from '@/components/ui/FilterChip';
+import { SegmentedToggle } from '@/components/ui/SegmentedToggle';
+import { RecordChart } from '@/components/dashboard/RecordChart';
+import { computeRecordWindow } from '@/utils/chart';
 import { Palette, Spacing, Radius, Shadows, Typography } from '@/constants/theme';
 import { useActiveWorkout } from '@/contexts/active-workout';
 
@@ -79,6 +82,7 @@ export default function WorkoutDetail() {
   const [variations, setVariations] = useState<Variation[]>([]);
   const [selectedVariationId, setSelectedVariationId] = useState<number | null>(null);
   const [chartMetric, setChartMetric] = useState<'volume' | 'duration'>('volume');
+  const [recordOffset, setRecordOffset] = useState(0);
   const [orderedExercises, setOrderedExercises] = useState<Exercise[]>([]);
 
   // Edit-mode working state (edits the currently selected gym + plan info)
@@ -135,6 +139,19 @@ export default function WorkoutDetail() {
 
   const currentVariation = variations.find(v => v.id === selectedVariationId) || null;
   const sessions = currentVariation?.sessions ?? [];
+
+  // Latest-5-records window for the training-volume chart. `sessions` is newest-first;
+  // the value plotted depends on the selected metric (volume kg vs duration minutes).
+  const chartWindow = useMemo(() => {
+    const records = sessions.map(s => ({
+      date: new Date(s.dateTime),
+      value: chartMetric === 'volume' ? s.volume : durationToMinutes(s.duration),
+    }));
+    return computeRecordWindow(records, recordOffset);
+  }, [sessions, chartMetric, recordOffset]);
+
+  // Reset pagination to the latest window whenever the selected gym changes.
+  useEffect(() => { setRecordOffset(0); }, [selectedVariationId]);
 
   // Whether the currently selected gym is the one with a live (unfinished) draft —
   // if so the footer button resumes it instead of offering to start a fresh one.
@@ -486,33 +503,36 @@ export default function WorkoutDetail() {
                   </TouchableOpacity>
                 </View>
 
-                {/* Training Volume Graph (for the selected gym) */}
+                {/* Training Volume Graph (for the selected gym) — latest 5 sessions, paginated */}
                 <View style={styles.graphSection}>
-                  <ThemedText type="bodyLarge" style={styles.sectionHeaderTitle}>Training Volume</ThemedText>
-                  <View style={styles.graphFilterRow}>
-                    <FilterChip label="Volume" selected={chartMetric === 'volume'} onPress={() => setChartMetric('volume')} />
-                    <FilterChip label="Duration" selected={chartMetric === 'duration'} onPress={() => setChartMetric('duration')} />
-                  </View>
-                  <View style={sessions.length > 0 ? styles.graphContainer : { paddingVertical: Spacing.sm }}>
-                    {sessions.length === 0 ? (
+                  {sessions.length === 0 ? (
+                    <>
+                      <ThemedText type="bodyLarge" style={styles.sectionHeaderTitle}>Training Volume</ThemedText>
                       <ThemedText type="bodySmall" style={styles.emptyText}>No sessions at this gym yet.</ThemedText>
-                    ) : (
-                      sessions.slice(0, 7).reverse().map((s, idx) => {
-                        const maxHeight = 80;
-                        const metricOf = (x: SessionSummary) => chartMetric === 'volume' ? x.volume : durationToMinutes(x.duration);
-                        const maxMetric = Math.max(...sessions.map(metricOf)) || 1;
-                        const barHeight = Math.max(10, (metricOf(s) / maxMetric) * maxHeight);
-                        const dateObj = new Date(s.dateTime);
-                        const dayLabel = dateObj.toLocaleDateString('en-US', { weekday: 'short' }).charAt(0);
-                        return (
-                          <View key={idx} style={styles.graphBarContainer}>
-                            <View style={[styles.graphBar, { height: barHeight, backgroundColor: Palette.accent }]} />
-                            <ThemedText type="caption" style={styles.graphLabel}>{dayLabel}</ThemedText>
-                          </View>
-                        );
-                      })
-                    )}
-                  </View>
+                    </>
+                  ) : (
+                    <RecordChart
+                      variant="bar"
+                      title="Training Volume"
+                      unit={chartMetric === 'volume' ? 'kg' : 'min'}
+                      points={chartWindow.points}
+                      periodLabel={chartWindow.periodLabel}
+                      onPrev={() => setRecordOffset(o => o + 1)}
+                      onNext={() => setRecordOffset(o => Math.max(o - 1, 0))}
+                      canGoPrev={chartWindow.canGoPrev}
+                      canGoNext={chartWindow.canGoNext}
+                      headerRight={
+                        <SegmentedToggle
+                          options={[
+                            { value: 'volume', label: 'Volume' },
+                            { value: 'duration', label: 'Duration' },
+                          ]}
+                          value={chartMetric}
+                          onChange={(v) => setChartMetric(v as 'volume' | 'duration')}
+                        />
+                      }
+                    />
+                  )}
                 </View>
 
                 {/* ── Gym selector ── */}
@@ -1033,28 +1053,6 @@ const styles = StyleSheet.create({
   sectionHeaderTitle: {
     marginBottom: Spacing.lg,
     color: Palette.textPrimary,
-  },
-  graphFilterRow: {
-    flexDirection: 'row',
-    marginBottom: Spacing.lg,
-  },
-  graphContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    height: 100,
-  },
-  graphBarContainer: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  graphBar: {
-    width: 14,
-    borderRadius: 7,
-    marginBottom: Spacing.sm,
-  },
-  graphLabel: {
-    color: Palette.textSecondary,
   },
   expandableHeader: {
     flexDirection: 'row',

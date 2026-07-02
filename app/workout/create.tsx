@@ -16,7 +16,7 @@ import { Palette, Spacing, Radius, Shadows, Typography } from '@/constants/theme
 import { useSessionToast } from '@/contexts/session-toast';
 import { useActiveWorkout } from '@/contexts/active-workout';
 import { createSession, addExerciseToSession, addSet as apiAddSet, finishSession, getLastSessionForVariation } from '@/api/session';
-import { fetchAllExercises } from '@/api/workout';
+import { fetchAllExercises, fetchExerciseHistory } from '@/api/workout';
 
 const muscleGroupsMapping: Record<string, string[]> = {
   'Chest': ['chest', 'upper chest', 'lower chest', 'mid chest', 'pectorals', 'pecs'],
@@ -71,6 +71,8 @@ interface ExItem {
   muscleGroup?: string;
   note: string;
   sets: SetItem[];
+  prWeight: number | null;
+  prReps: number | null;
 }
 
 interface ExerciseEntry { id: number; name: string; muscleGroup: string; }
@@ -174,7 +176,9 @@ const ExerciseCard = ({
   const [noteFocus, setNoteFocus] = useState(false);
   const doneCount = ex.sets.filter((s: SetItem) => s.done).length;
   const allDone = doneCount > 0 && doneCount === ex.sets.length;
-  const maxPrev = Math.max(0, ...ex.sets.map((s: SetItem) => s.prevWeight ?? 0));
+  // All-time PR for this exercise (fetched on session load). Used for the 🏆 badge.
+  const allTimePrWeight = ex.prWeight ?? 0;
+  const allTimePrReps = ex.prReps ?? 0;
 
   return (
     <View style={[styles.exerciseCard, allDone && styles.exerciseCardDone, isDragging && styles.exerciseCardDragging]}>
@@ -221,7 +225,8 @@ const ExerciseCard = ({
 
           {ex.sets.map((set: any, idx: number) => {
             const w = parseFloat(set.weight) || 0;
-            const isPR = maxPrev > 0 && w > maxPrev;
+            const r = parseFloat(set.reps) || 0;
+            const isPR = allTimePrWeight > 0 && (w > allTimePrWeight || (w === allTimePrWeight && r > allTimePrReps));
             return (
               <SetRow
                 key={set.id}
@@ -236,12 +241,14 @@ const ExerciseCard = ({
           })}
 
           <View style={[styles.noteContainer, noteFocus && styles.noteContainerFocused]}>
-            <Ionicons name="pencil" size={13} color={noteFocus ? Palette.accent : Palette.textSecondary} style={{ marginRight: Spacing.xs }} />
+            <Ionicons name="pencil" size={13} color={noteFocus ? Palette.accent : Palette.textSecondary} style={{ marginRight: Spacing.xs, marginTop: 3 }} />
             <TextInput
               style={styles.noteInput}
               placeholder="Note..."
               placeholderTextColor={Palette.textSecondary}
               value={ex.note}
+              multiline
+              textAlignVertical="top"
               onFocus={() => setNoteFocus(true)}
               onBlur={() => setNoteFocus(false)}
               onChangeText={(t) => onUpdateSet(ex.key, null, "note", t)}
@@ -330,6 +337,19 @@ export default function CreateSession() {
             restoreInfoRef.current = { source: 'draft', detail: `startTime=${draft.startTime} ageMs=${ageMs}` };
             setExercises(draft.exercises);
             setLoading(false);
+            // Fetch all-time PRs for the restored exercises in the background and patch them in.
+            // Drafts are saved without prWeight/prReps so we always need this step on restore.
+            Promise.allSettled(
+              (draft.exercises as ExItem[]).map((ex: ExItem) => fetchExerciseHistory(ex.exerciseId))
+            ).then(histories => {
+              setExercises(prev => prev.map((ex, i) => {
+                const result = histories[i];
+                if (result.status === 'fulfilled' && result.value?.pr) {
+                  return { ...ex, prWeight: result.value.pr.bestWeight, prReps: result.value.pr.bestReps };
+                }
+                return ex;
+              }));
+            }).catch(() => {});
             return;
           }
           restoreInfoRef.current = { source: 'fresh', detail: `draft rejected: ageMs=${ageMs} exCount=${Array.isArray(draft.exercises) ? draft.exercises.length : 'n/a'}` };
@@ -351,6 +371,8 @@ export default function CreateSession() {
           name: e.name,
           muscleGroup: e.muscleGroup,
           note: "",
+          prWeight: null,
+          prReps: null,
           sets: [{ id: "s1", prevWeight: null, prevReps: null, weight: "", reps: "", done: false }],
         }));
       } catch {}
@@ -374,6 +396,21 @@ export default function CreateSession() {
             });
           }
         }
+      } catch {}
+
+      // Fetch each exercise's all-time PR in parallel and store it on the item so
+      // the 🏆 badge compares against the real all-time best, not just the last session.
+      try {
+        const histories = await Promise.allSettled(
+          base.map(ex => fetchExerciseHistory(ex.exerciseId))
+        );
+        base = base.map((ex, i) => {
+          const result = histories[i];
+          if (result.status === 'fulfilled' && result.value?.pr) {
+            return { ...ex, prWeight: result.value.pr.bestWeight, prReps: result.value.pr.bestReps };
+          }
+          return ex;
+        });
       } catch {}
 
       setExercises(base);
@@ -582,8 +619,20 @@ export default function CreateSession() {
       name: exercise.name,
       muscleGroup: exercise.muscleGroup,
       note: '',
+      prWeight: null,
+      prReps: null,
       sets: [{ id: 's1', prevWeight: null, prevReps: null, weight: '', reps: '', done: false }],
     };
+    // Fetch the all-time PR for newly added exercises too.
+    fetchExerciseHistory(exercise.id)
+      .then(h => {
+        if (h?.pr) {
+          setExercises(prev => prev.map(ex =>
+            ex.key === key ? { ...ex, prWeight: h.pr.bestWeight, prReps: h.pr.bestReps } : ex
+          ));
+        }
+      })
+      .catch(() => {});
     setExercises(prev => [...prev, newEx]);
     setExpandedKeys(prev => ({ ...prev, [key]: true }));
     setShowAddExercise(false);
@@ -1092,7 +1141,7 @@ const styles = StyleSheet.create({
   },
   noteContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     borderBottomWidth: 1,
     borderBottomColor: Palette.border,
     paddingVertical: 3,
@@ -1105,6 +1154,8 @@ const styles = StyleSheet.create({
   noteInput: {
     flex: 1,
     fontSize: 13,
+    lineHeight: 18,
+    minHeight: 18,
     color: Palette.textPrimary,
     padding: 0,
   },

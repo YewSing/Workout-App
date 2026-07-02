@@ -59,10 +59,13 @@ export function WeeklyVolumeChart({ bars, periodLabel, onPrev, onNext, canGoNext
       <ThemedText type="bodyLarge" style={styles.title}>Weekly Volume</ThemedText>
 
       <View style={styles.chartRow}>
-        <View style={styles.yAxis}>
-          <ThemedText type="caption" style={styles.yAxisLabel}>{formatAxisValue(niceMax)}</ThemedText>
-          <ThemedText type="caption" style={styles.yAxisLabel}>{formatAxisValue(niceMax / 2)}</ThemedText>
-          <ThemedText type="caption" style={styles.yAxisLabel}>0</ThemedText>
+        <View style={styles.yAxisWrapper}>
+          <ThemedText type="caption" style={styles.yAxisUnit}>kg</ThemedText>
+          <View style={styles.yAxis}>
+            <ThemedText type="caption" style={styles.yAxisLabel}>{formatAxisValue(niceMax)}</ThemedText>
+            <ThemedText type="caption" style={styles.yAxisLabel}>{formatAxisValue(niceMax / 2)}</ThemedText>
+            <ThemedText type="caption" style={styles.yAxisLabel}>0</ThemedText>
+          </View>
         </View>
 
         <View style={styles.chartColumn}>
@@ -113,13 +116,13 @@ export function WeeklyVolumeChart({ bars, periodLabel, onPrev, onNext, canGoNext
               })}
             </View>
           </View>
-
-          <View style={styles.dayLabelsRow}>
-            {WEEKDAY_LABELS.map((label, index) => (
-              <ThemedText key={index} type="caption" style={styles.dayLabel}>{label}</ThemedText>
-            ))}
-          </View>
         </View>
+      </View>
+
+      <View style={styles.dayLabelsRow}>
+        {WEEKDAY_LABELS.map((label, index) => (
+          <ThemedText key={index} type="caption" style={styles.dayLabel}>{label}</ThemedText>
+        ))}
       </View>
 
       <View style={styles.pagination}>
@@ -146,13 +149,24 @@ const styles = StyleSheet.create({
   },
   chartRow: {
     flexDirection: 'row',
+    alignItems: 'flex-end',
+  },
+  yAxisWrapper: {
+    width: 35,
+    alignItems: 'flex-end',
+    paddingRight: Spacing.sm,
+  },
+  yAxisUnit: {
+    color: Palette.accent,
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    marginBottom: 2,
   },
   yAxis: {
-    width: 35,
     height: CHART_HEIGHT,
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    paddingRight: Spacing.sm,
   },
   yAxisLabel: {
     color: Palette.textSecondary,
@@ -226,6 +240,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: Spacing.sm,
+    marginLeft: 35,
   },
   dayLabel: {
     flex: 1,
